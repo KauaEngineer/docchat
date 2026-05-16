@@ -22,6 +22,10 @@
     "typecheck": "echo \"@repo/config: nothing to typecheck\"",
     "clean": "rm -rf .turbo node_modules"
   },
+  "dependencies": {
+    "tailwindcss": "^4.0.0",
+    "tw-animate-css": "^1.0.4"
+  },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.17.0",
