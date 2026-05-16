@@ -1,0 +1,3 @@
+@import "@repo/config/tailwind/globals.css";
+
+@source "../**/*.{ts,tsx}";
