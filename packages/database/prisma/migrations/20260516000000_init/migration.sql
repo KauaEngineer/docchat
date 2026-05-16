@@ -148,6 +148,12 @@ CREATE TABLE "document_chunks" (
     CONSTRAINT "document_chunks_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateIndex (HNSW vector index for cosine similarity)
+CREATE INDEX document_chunk_embedding_idx
+ON "document_chunks"
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
@@ -183,17 +189,6 @@ CREATE INDEX "documents_userId_idx" ON "documents"("userId");
 
 -- CreateIndex
 CREATE INDEX "document_chunks_documentId_idx" ON "document_chunks"("documentId");
-
--- CreateIndex
--- HNSW index para busca por similaridade cosine no embedding (768d / Gemini).
--- HNSW oferece melhor recall que IVFFlat sem precisar de treino prévio,
--- ao custo de mais memória — recomendado para read-heavy semantic search.
--- Params: m=16, ef_construction=64 são os defaults do pgvector e funcionam bem
--- até alguns milhões de chunks. Ajuste se a base crescer muito.
-CREATE INDEX "document_chunks_embedding_hnsw_idx"
-    ON "document_chunks"
-    USING hnsw ("embedding" vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
 
 -- AddForeignKey
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

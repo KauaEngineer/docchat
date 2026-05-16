@@ -17,6 +17,10 @@
     "./types": {
       "types": "./src/types.ts",
       "default": "./src/types.ts"
+    },
+    "./rag": {
+      "types": "./src/rag.ts",
+      "default": "./src/rag.ts"
     }
   },
   "scripts": {
