@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(dir C:\\\\Users\\\\kauan\\\\documents\\\\chatbot-portfolio)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(npx tsc *)",
+      "Bash(wait *)"
     ]
   }
 }

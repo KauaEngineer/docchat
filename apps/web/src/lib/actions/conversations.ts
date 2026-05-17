@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@repo/database';
 
 import { auth } from '@/lib/auth';
+import { isValidModelId } from '@/lib/models';
 import type {
   ConversationSummary,
   GroupedConversations,
@@ -77,6 +78,18 @@ export async function renameConversation(id: string, title: string): Promise<voi
   const updated = await prisma.conversation.updateMany({
     where: { id, userId },
     data: { title: trimmed },
+  });
+  if (updated.count === 0) throw new Error('Conversa não encontrada.');
+  revalidateShell();
+}
+
+export async function updateConversationModel(id: string, model: string): Promise<void> {
+  const userId = await requireUserId();
+  if (!isValidModelId(model)) throw new Error('Modelo inválido.');
+
+  const updated = await prisma.conversation.updateMany({
+    where: { id, userId },
+    data: { model },
   });
   if (updated.count === 0) throw new Error('Conversa não encontrada.');
   revalidateShell();
