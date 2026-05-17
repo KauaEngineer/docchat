@@ -12,6 +12,7 @@ import { ScrollArea } from '@repo/ui/components/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@repo/ui/components/sheet';
 
 import { createConversation } from '@/lib/actions/conversations';
+import { DEFAULT_MODEL_ID } from '@/lib/models';
 
 import {
   ConversationList,
@@ -42,7 +43,7 @@ const AppShellContext = React.createContext<AppShellState | null>(null);
 
 export function AppShellProvider({
   children,
-  defaultModel = 'claude-sonnet-4-6',
+  defaultModel = DEFAULT_MODEL_ID,
 }: {
   children: React.ReactNode;
   defaultModel?: string;

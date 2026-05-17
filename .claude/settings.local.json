@@ -7,7 +7,8 @@
       "Bash(wait *)",
       "Bash(npm view *)",
       "Bash(pnpm install *)",
-      "Bash(npx --prefix /c/Users/kauan/documents/chatbot-portfolio/apps/web tsc --noEmit -p /c/Users/kauan/documents/chatbot-portfolio/apps/web/tsconfig.json)"
+      "Bash(npx --prefix /c/Users/kauan/documents/chatbot-portfolio/apps/web tsc --noEmit -p /c/Users/kauan/documents/chatbot-portfolio/apps/web/tsconfig.json)",
+      "Bash(find /c/Users/kauan/documents/chatbot-portfolio/node_modules/.pnpm/@ai-sdk+react@1* -name \"index.d.ts\")"
     ]
   }
 }
