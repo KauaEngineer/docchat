@@ -4,7 +4,9 @@
       "Bash(dir C:\\\\Users\\\\kauan\\\\documents\\\\chatbot-portfolio)",
       "Bash(node *)",
       "Bash(npx tsc *)",
-      "Bash(wait *)"
+      "Bash(wait *)",
+      "Bash(npm view *)",
+      "Bash(pnpm install *)"
     ]
   }
 }
