@@ -50,6 +50,9 @@ export function ChatLanding({ userName }: { userName: string | null }) {
           disabled={creating}
           isStreaming={false}
           autoFocus
+          // Sem conversa ainda — anexos órfãos seriam confusos. Fluxo: cria
+          // a conversa primeiro, anexa nas próximas mensagens.
+          disableAttachments
           placeholder="Pergunte qualquer coisa..."
         />
       </div>

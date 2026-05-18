@@ -1,21 +1,54 @@
 'use client';
 
 import * as React from 'react';
-import { PaperclipIcon, SendHorizontalIcon, SquareIcon } from 'lucide-react';
+import {
+  FileIcon,
+  ImageIcon,
+  Loader2Icon,
+  PaperclipIcon,
+  SendHorizontalIcon,
+  SquareIcon,
+  XIcon,
+} from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Button } from '@repo/ui/components/button';
 import { cn } from '@repo/ui/lib/utils';
 
 const MAX_HEIGHT_PX = 200;
 const CHAR_WARNING_THRESHOLD = 4000;
+const ACCEPT_ATTR =
+  'image/png,image/jpeg,image/webp,image/gif,application/pdf,text/*,application/json';
+
+export interface SubmittedAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  url: string;
+}
+
+interface ComposerAttachment {
+  localId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  status: 'uploading' | 'ready' | 'error';
+  id?: string;
+  url?: string;
+  errorMessage?: string;
+}
 
 export interface ComposerProps {
-  onSubmit: (text: string) => void | Promise<void>;
+  onSubmit: (text: string, attachments?: SubmittedAttachment[]) => void | Promise<void>;
   onStop?: () => void;
   isStreaming?: boolean;
   disabled?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
+  // Desabilita Paperclip + drag/drop. Usado na landing (sem conversationId
+  // ainda — anexos órfãos seriam confusos).
+  disableAttachments?: boolean;
   className?: string;
 }
 
@@ -26,10 +59,18 @@ export function Composer({
   disabled = false,
   placeholder = 'Envie uma mensagem...',
   autoFocus = false,
+  disableAttachments = false,
   className,
 }: ComposerProps) {
   const [value, setValue] = React.useState('');
+  const [attachments, setAttachments] = React.useState<ComposerAttachment[]>([]);
+  const [isDragging, setIsDragging] = React.useState(false);
+
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  // dragenter/dragleave disparam recursivamente nos filhos. Usamos um contador
+  // pra só desativar o highlight quando saímos do composer inteiro.
+  const dragCounterRef = React.useRef(0);
 
   // Auto-resize: zera a altura para o scrollHeight refletir só o conteúdo,
   // depois aplica clampado em MAX_HEIGHT_PX.
@@ -43,13 +84,105 @@ export function Composer({
   }, [value]);
 
   const trimmed = value.trim();
-  const canSend = !disabled && !isStreaming && trimmed.length > 0;
+  const hasReadyAttachment = attachments.some((a) => a.status === 'ready');
+  const isUploading = attachments.some((a) => a.status === 'uploading');
+  const canSend =
+    !disabled &&
+    !isStreaming &&
+    !isUploading &&
+    (trimmed.length > 0 || hasReadyAttachment);
+
+  async function handleFiles(fileList: FileList | File[]): Promise<void> {
+    if (disableAttachments) return;
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+
+    // Cria placeholders 'uploading' imediatamente — UX percebe os arquivos
+    // antes do round-trip pro servidor.
+    const newEntries: ComposerAttachment[] = files.map((f) => ({
+      localId: crypto.randomUUID(),
+      filename: f.name,
+      mimeType: f.type,
+      size: f.size,
+      status: 'uploading',
+    }));
+    setAttachments((prev) => [...prev, ...newEntries]);
+
+    const formData = new FormData();
+    for (const f of files) formData.append('files', f);
+
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `Erro no upload (${res.status}).`);
+      }
+      const data = (await res.json()) as {
+        attachments: Array<{
+          id: string;
+          filename: string;
+          mimeType: string;
+          size: number;
+          url: string;
+        }>;
+      };
+
+      // Server preserva ordem do FormData — mapeamos 1:1 contra newEntries.
+      setAttachments((prev) => {
+        const next = [...prev];
+        data.attachments.forEach((sa, i) => {
+          const local = newEntries[i];
+          if (!local) return;
+          const idx = next.findIndex((a) => a.localId === local.localId);
+          if (idx >= 0) {
+            next[idx] = {
+              ...next[idx]!,
+              status: 'ready',
+              id: sa.id,
+              url: sa.url,
+            };
+          }
+        });
+        return next;
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro no upload.';
+      toast.error(message);
+      setAttachments((prev) =>
+        prev.map((a) =>
+          newEntries.some((n) => n.localId === a.localId)
+            ? { ...a, status: 'error', errorMessage: message }
+            : a,
+        ),
+      );
+    }
+  }
+
+  function removeAttachment(localId: string): void {
+    // Nota: o objeto no R2 fica como órfão (limpeza fora de escopo). Mesma
+    // coisa se a aba for fechada com anexo pendente.
+    setAttachments((prev) => prev.filter((a) => a.localId !== localId));
+  }
 
   async function handleSubmit(): Promise<void> {
     if (!canSend) return;
+    const ready = attachments
+      .filter(
+        (a): a is ComposerAttachment & { id: string; url: string; status: 'ready' } =>
+          a.status === 'ready' && typeof a.id === 'string' && typeof a.url === 'string',
+      )
+      .map<SubmittedAttachment>((a) => ({
+        id: a.id,
+        filename: a.filename,
+        mimeType: a.mimeType,
+        size: a.size,
+        url: a.url,
+      }));
+
     const toSend = trimmed;
     setValue('');
-    await onSubmit(toSend);
+    setAttachments([]);
+    await onSubmit(toSend, ready.length > 0 ? ready : undefined);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
@@ -60,9 +193,72 @@ export function Composer({
     }
   }
 
+  // -- Drag & drop ----------------------------------------------------------
+
+  function isFileDrag(e: React.DragEvent): boolean {
+    // dataTransfer.types pode incluir 'Files' quando arquivos do SO estão
+    // sendo arrastados. Ignora drags de texto/HTML pra não piscar o overlay.
+    return Array.from(e.dataTransfer.types).includes('Files');
+  }
+
+  function onDragEnter(e: React.DragEvent): void {
+    if (disableAttachments || !isFileDrag(e)) return;
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setIsDragging(true);
+  }
+  function onDragLeave(e: React.DragEvent): void {
+    if (disableAttachments) return;
+    e.preventDefault();
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setIsDragging(false);
+  }
+  function onDragOver(e: React.DragEvent): void {
+    if (disableAttachments || !isFileDrag(e)) return;
+    e.preventDefault();
+  }
+  function onDrop(e: React.DragEvent): void {
+    if (disableAttachments) return;
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) {
+      void handleFiles(e.dataTransfer.files);
+    }
+  }
+
   return (
-    <div className={cn('w-full', className)}>
-      <div className="bg-background focus-within:border-ring focus-within:ring-ring/20 relative flex flex-col rounded-2xl border shadow-sm transition focus-within:ring-2">
+    <div
+      className={cn('w-full', className)}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {attachments.length > 0 ? (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {attachments.map((a) => (
+            <AttachmentChip
+              key={a.localId}
+              attachment={a}
+              onRemove={() => removeAttachment(a.localId)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <div
+        className={cn(
+          'bg-background focus-within:border-ring focus-within:ring-ring/20 relative flex flex-col rounded-2xl border shadow-sm transition focus-within:ring-2',
+          isDragging && 'border-primary ring-primary/20 ring-2',
+        )}
+      >
+        {isDragging ? (
+          <div className="bg-primary/5 text-primary pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl text-sm font-medium">
+            Solte os arquivos aqui
+          </div>
+        ) : null}
+
         <textarea
           ref={textareaRef}
           value={value}
@@ -77,26 +273,44 @@ export function Composer({
         />
 
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            disabled
-            title="Anexar (em breve)"
-            aria-label="Anexar arquivo"
-            className="size-8"
-          >
-            <PaperclipIcon className="size-4" />
-          </Button>
+          {disableAttachments ? (
+            <div />
+          ) : (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={ACCEPT_ATTR}
+                hidden
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    void handleFiles(e.target.files);
+                  }
+                  // Reset pra permitir re-selecionar o mesmo arquivo.
+                  e.target.value = '';
+                }}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                title="Anexar arquivos"
+                aria-label="Anexar arquivos"
+                className="size-8"
+              >
+                <PaperclipIcon className="size-4" />
+              </Button>
+            </>
+          )}
 
           <div className="flex items-center gap-2">
             {value.length > CHAR_WARNING_THRESHOLD ? (
               <span
                 className={cn(
                   'text-xs tabular-nums',
-                  value.length > 8000
-                    ? 'text-destructive'
-                    : 'text-muted-foreground',
+                  value.length > 8000 ? 'text-destructive' : 'text-muted-foreground',
                 )}
               >
                 {value.length.toLocaleString('pt-BR')}
@@ -131,4 +345,74 @@ export function Composer({
       </div>
     </div>
   );
+}
+
+function AttachmentChip({
+  attachment,
+  onRemove,
+}: {
+  attachment: ComposerAttachment;
+  onRemove: () => void;
+}) {
+  const isImage = attachment.mimeType.startsWith('image/');
+  const isError = attachment.status === 'error';
+
+  return (
+    <div
+      className={cn(
+        'bg-muted relative flex items-center gap-2 rounded-lg border py-1.5 pr-7 pl-1.5 text-xs',
+        isError && 'border-destructive/40',
+      )}
+    >
+      <div className="bg-background flex size-9 shrink-0 items-center justify-center overflow-hidden rounded">
+        {attachment.status === 'uploading' ? (
+          <Loader2Icon className="text-muted-foreground size-4 animate-spin" />
+        ) : isImage && attachment.url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={attachment.url}
+            alt=""
+            className="size-9 object-cover"
+          />
+        ) : isImage ? (
+          <ImageIcon className="text-muted-foreground size-4" />
+        ) : (
+          <FileIcon className="text-muted-foreground size-4" />
+        )}
+      </div>
+
+      <div className="flex min-w-0 flex-col">
+        <span className="max-w-[180px] truncate font-medium" title={attachment.filename}>
+          {attachment.filename}
+        </span>
+        <span
+          className={cn(
+            'tabular-nums',
+            isError ? 'text-destructive' : 'text-muted-foreground',
+          )}
+        >
+          {isError
+            ? (attachment.errorMessage ?? 'erro')
+            : attachment.status === 'uploading'
+              ? 'enviando…'
+              : formatBytes(attachment.size)}
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remover ${attachment.filename}`}
+        className="hover:bg-background absolute top-1 right-1 rounded p-0.5"
+      >
+        <XIcon className="size-3" />
+      </button>
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

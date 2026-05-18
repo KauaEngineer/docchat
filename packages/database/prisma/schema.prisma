@@ -161,7 +161,9 @@ model Artifact {
 
 model Attachment {
   id        String   @id @default(cuid())
-  messageId String
+  // Nullable: upload acontece ANTES da mensagem ser enviada (multi-step UX).
+  // O chat route linka via attachmentIds quando a user message é persistida.
+  messageId String?
   userId    String
   filename  String
   mimeType  String
@@ -170,8 +172,8 @@ model Attachment {
   url       String   @db.VarChar(2048)
   createdAt DateTime @default(now())
 
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id])
+  message Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id])
 
   @@index([messageId])
   @@index([userId])

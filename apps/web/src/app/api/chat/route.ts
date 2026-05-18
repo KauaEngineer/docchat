@@ -23,12 +23,21 @@ export const maxDuration = 60;
 // useChat v4 (sem `sendExtraMessageFields`) envia mensagens só com
 // { role, content, ...campos opcionais } — sem `id`. Os ids são gerados
 // server-side ao persistir, então não precisamos exigir do cliente.
+const AttachmentSchema = z.object({
+  name: z.string().optional(),
+  contentType: z.string().optional(),
+  url: z.string(),
+});
+
 const RequestSchema = z.object({
   messages: z
     .array(
       z.object({
         role: z.enum(['user', 'assistant', 'system', 'data']),
         content: z.string(),
+        // useChat v4 propaga experimental_attachments do append() pro POST.
+        // O array vem com { name?, contentType?, url } por anexo.
+        experimental_attachments: z.array(AttachmentSchema).optional(),
       }),
     )
     .min(1),
@@ -37,6 +46,9 @@ const RequestSchema = z.object({
   // Edição inline: id da user message que está sendo reeditada. O servidor
   // apaga essa msg + todas posteriores (cascade), depois persiste a nova versão.
   editFromMessageId: z.string().min(1).optional(),
+  // Ids das Attachment rows criadas no upload (POST /api/upload). Usado pra
+  // linkar messageId após persistir a user message.
+  attachmentIds: z.array(z.string()).optional(),
 });
 
 const idGen = createIdGenerator();
@@ -58,7 +70,8 @@ export async function POST(req: Request): Promise<Response> {
       return jsonError(400, 'Body inválido.', detail);
     }
 
-    const { messages, conversationId, model, editFromMessageId } = parsed.data;
+    const { messages, conversationId, model, editFromMessageId, attachmentIds } =
+      parsed.data;
 
     const conversation = await prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -96,6 +109,11 @@ export async function POST(req: Request): Promise<Response> {
     //   request tem uma user a mais que o banco. Persiste normalmente.
     // -------------------------------------------------------------------------
 
+    const userContentParts = buildUserContentParts(
+      lastReqUser.content,
+      lastReqUser.attachments,
+    );
+
     if (editFromMessageId) {
       const target = await prisma.message.findUnique({
         where: { id: editFromMessageId },
@@ -112,13 +130,15 @@ export async function POST(req: Request): Promise<Response> {
           createdAt: { gte: target.createdAt },
         },
       });
-      await prisma.message.create({
+      const created = await prisma.message.create({
         data: {
           conversationId,
           role: MessageRole.USER,
-          content: textToParts(lastReqUser.content) as unknown as Prisma.InputJsonValue,
+          content: userContentParts as unknown as Prisma.InputJsonValue,
         },
+        select: { id: true },
       });
+      await linkAttachments(attachmentIds, session.user.id, created.id);
     } else if (lastReqMessage.role === 'assistant') {
       await deleteTrailingAfterLastUser(conversationId);
     } else {
@@ -132,13 +152,15 @@ export async function POST(req: Request): Promise<Response> {
         await deleteTrailingAfterLastUser(conversationId);
       } else {
         // Novo turno: persiste a user message.
-        await prisma.message.create({
+        const created = await prisma.message.create({
           data: {
             conversationId,
             role: MessageRole.USER,
-            content: textToParts(lastReqUser.content) as unknown as Prisma.InputJsonValue,
+            content: userContentParts as unknown as Prisma.InputJsonValue,
           },
+          select: { id: true },
         });
+        await linkAttachments(attachmentIds, session.user.id, created.id);
       }
     }
 
@@ -148,13 +170,19 @@ export async function POST(req: Request): Promise<Response> {
       select: { id: true, role: true, content: true },
     });
 
+    // Reconstrói experimental_attachments dos file parts persistidos, senão
+    // o modelo não recebe o anexo de volta nos turnos seguintes/regenerate.
     const history: Message[] = dbMessages
       .filter((m) => m.role !== MessageRole.TOOL)
-      .map((m) => ({
-        id: m.id,
-        role: dbRoleToUIRole(m.role),
-        content: partsToText(m.content),
-      }));
+      .map((m) => {
+        const files = filePartsToAttachments(m.content);
+        return {
+          id: m.id,
+          role: dbRoleToUIRole(m.role),
+          content: partsToText(m.content),
+          ...(files.length > 0 && { experimental_attachments: files }),
+        };
+      });
 
     const userName = session.user.name ?? undefined;
 
@@ -240,14 +268,44 @@ async function deleteTrailingAfterLastUser(conversationId: string): Promise<void
   });
 }
 
+type ReqAttachment = { name?: string; contentType?: string; url: string };
+
 function findLastUserMessage(
-  messages: { role: 'user' | 'assistant' | 'system' | 'data'; content: string }[],
-): { content: string } | null {
+  messages: Array<{
+    role: 'user' | 'assistant' | 'system' | 'data';
+    content: string;
+    experimental_attachments?: ReqAttachment[];
+  }>,
+): { content: string; attachments: ReqAttachment[] } | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]!;
-    if (m.role === 'user') return { content: m.content };
+    if (m.role === 'user') {
+      return {
+        content: m.content,
+        attachments: m.experimental_attachments ?? [],
+      };
+    }
   }
   return null;
+}
+
+// Liga as Attachment rows (criadas no upload com messageId=null) à user
+// message recém-persistida. Checa userId pra impedir cross-user, e
+// `messageId: null` pra não reescrever links já existentes.
+async function linkAttachments(
+  attachmentIds: string[] | undefined,
+  userId: string,
+  messageId: string,
+): Promise<void> {
+  if (!attachmentIds || attachmentIds.length === 0) return;
+  await prisma.attachment.updateMany({
+    where: {
+      id: { in: attachmentIds },
+      userId,
+      messageId: null,
+    },
+    data: { messageId },
+  });
 }
 
 function dbRoleToUIRole(role: MessageRole): 'user' | 'assistant' | 'system' {
@@ -264,10 +322,63 @@ function dbRoleToUIRole(role: MessageRole): 'user' | 'assistant' | 'system' {
   }
 }
 
-// Convenção do projeto: persistimos message.content como array de parts JSON.
-// Mantém compatibilidade com mensagens já salvas em formatos anteriores.
+// Convenção do projeto: persistimos message.content como array de parts JSON
+// com type 'text' | 'file'. Mantém compatibilidade com mensagens antigas
+// (puras de texto) ao mesmo tempo que carrega anexos de imagem/PDF/etc.
+type StoredPart =
+  | { type: 'text'; text: string }
+  | { type: 'file'; url: string; mediaType: string };
+
+function buildUserContentParts(
+  text: string,
+  attachments: ReqAttachment[] | undefined,
+): StoredPart[] {
+  const parts: StoredPart[] = [];
+  if (text.length > 0) {
+    parts.push({ type: 'text', text });
+  }
+  if (attachments && attachments.length > 0) {
+    for (const a of attachments) {
+      parts.push({
+        type: 'file',
+        url: a.url,
+        mediaType: a.contentType ?? 'application/octet-stream',
+      });
+    }
+  }
+  // Garante pelo menos um part — Prisma aceita array vazio mas convertToCore
+  // pode reclamar de mensagens vazias.
+  if (parts.length === 0) parts.push({ type: 'text', text: '' });
+  return parts;
+}
+
 function textToParts(text: string): Array<{ type: 'text'; text: string }> {
   return [{ type: 'text', text }];
+}
+
+function filePartsToAttachments(content: unknown): ReqAttachment[] {
+  if (!Array.isArray(content)) return [];
+  const out: ReqAttachment[] = [];
+  for (const p of content) {
+    if (
+      p !== null &&
+      typeof p === 'object' &&
+      'type' in p &&
+      (p as { type: unknown }).type === 'file' &&
+      'url' in p &&
+      typeof (p as { url: unknown }).url === 'string'
+    ) {
+      const mediaType =
+        'mediaType' in p && typeof (p as { mediaType: unknown }).mediaType === 'string'
+          ? (p as { mediaType: string }).mediaType
+          : undefined;
+      out.push({
+        url: (p as { url: string }).url,
+        contentType: mediaType,
+      });
+    }
+  }
+  return out;
 }
 
 function partsToText(content: unknown): string {

@@ -14,7 +14,8 @@
       "Bash(grep -nE \"sendMessages|fetch.*api|messages,\\\\s*$|trigger:\" /c/Users/kauan/documents/chatbot-portfolio/node_modules/.pnpm/ai@5.0.188_zod@3.25.76/node_modules/ai/dist/index.js)",
       "Bash(pnpm --filter web typecheck)",
       "Bash(pnpm --filter @repo/ai typecheck)",
-      "Bash(pnpm --filter @repo/storage typecheck)"
+      "Bash(pnpm --filter @repo/storage typecheck)",
+      "Bash(pnpm --filter @repo/database db:generate)"
     ]
   }
 }

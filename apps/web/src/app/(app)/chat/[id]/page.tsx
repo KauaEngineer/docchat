@@ -36,11 +36,17 @@ export default async function ChatConversationPage({
 
   const initialMessages: Message[] = conversation.messages
     .filter((m) => m.role !== MessageRole.TOOL)
-    .map((m) => ({
-      id: m.id,
-      role: dbRoleToUIRole(m.role),
-      content: partsToText(m.content),
-    }));
+    .map((m) => {
+      const attachments = filePartsToAttachments(m.content);
+      return {
+        id: m.id,
+        role: dbRoleToUIRole(m.role),
+        content: partsToText(m.content),
+        // Reidrata a UI com os anexos enviados originalmente. Sem isso, F5
+        // perderia thumbnails e o usuário acharia que o arquivo sumiu.
+        ...(attachments.length > 0 && { experimental_attachments: attachments }),
+      };
+    });
 
   return (
     <Chat
@@ -83,4 +89,31 @@ function partsToText(content: unknown): string {
     }
   }
   return out.join('\n');
+}
+
+function filePartsToAttachments(
+  content: unknown,
+): Array<{ url: string; contentType?: string }> {
+  if (!Array.isArray(content)) return [];
+  const out: Array<{ url: string; contentType?: string }> = [];
+  for (const p of content) {
+    if (
+      p !== null &&
+      typeof p === 'object' &&
+      'type' in p &&
+      (p as { type: unknown }).type === 'file' &&
+      'url' in p &&
+      typeof (p as { url: unknown }).url === 'string'
+    ) {
+      const mediaType =
+        'mediaType' in p && typeof (p as { mediaType: unknown }).mediaType === 'string'
+          ? (p as { mediaType: string }).mediaType
+          : undefined;
+      out.push({
+        url: (p as { url: string }).url,
+        contentType: mediaType,
+      });
+    }
+  }
+  return out;
 }

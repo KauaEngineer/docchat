@@ -13,7 +13,7 @@ loadEnvConfig(path.resolve(process.cwd(), '..', '..'));
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  transpilePackages: ['@repo/ui', '@repo/database', '@repo/ai'],
+  transpilePackages: ['@repo/ui', '@repo/database', '@repo/ai', '@repo/storage'],
   experimental: {
     typedRoutes: true,
   },

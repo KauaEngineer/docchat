@@ -5,6 +5,7 @@ import {
   BotIcon,
   CheckIcon,
   CopyIcon,
+  FileIcon,
   PencilIcon,
   RefreshCwIcon,
   XIcon,
@@ -67,11 +68,24 @@ function UserBubble({
     );
   }
 
+  const attachments = message.experimental_attachments ?? [];
+
   return (
     <div className="group flex w-full flex-col items-end py-2">
-      <div className="bg-muted text-foreground max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-sm whitespace-pre-wrap break-words">
-        {message.content}
-      </div>
+      {attachments.length > 0 ? (
+        <div className="mb-1.5 flex max-w-[85%] flex-wrap justify-end gap-1.5">
+          {attachments.map((att, i) => (
+            <AttachmentPreview key={i} attachment={att} />
+          ))}
+        </div>
+      ) : null}
+
+      {message.content.length > 0 ? (
+        <div className="bg-muted text-foreground max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-sm whitespace-pre-wrap break-words">
+          {message.content}
+        </div>
+      ) : null}
+
       {onEdit ? (
         <div className="mt-1 flex opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <Button
@@ -87,6 +101,48 @@ function UserBubble({
         </div>
       ) : null}
     </div>
+  );
+}
+
+// Thumbnail pra imagem, chip de filename/ícone pros demais. Linka pro URL
+// (signed ou domínio público) para o usuário inspecionar o original.
+function AttachmentPreview({
+  attachment,
+}: {
+  attachment: { name?: string; contentType?: string; url: string };
+}) {
+  const isImage = (attachment.contentType ?? '').startsWith('image/');
+  const filename = attachment.name ?? 'arquivo';
+
+  if (isImage) {
+    return (
+      <a
+        href={attachment.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="block overflow-hidden rounded-lg border"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={attachment.url}
+          alt={filename}
+          className="max-h-48 max-w-[240px] object-cover"
+        />
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={attachment.url}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="bg-muted hover:bg-muted/80 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition"
+      title={filename}
+    >
+      <FileIcon className="text-muted-foreground size-4 shrink-0" />
+      <span className="max-w-[180px] truncate">{filename}</span>
+    </a>
   );
 }
 
