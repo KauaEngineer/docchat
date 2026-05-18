@@ -1,39 +1,35 @@
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOpenAI } from '@ai-sdk/openai';
-import type { LanguageModelV2 } from '@ai-sdk/provider';
+import { createVercel } from '@ai-sdk/vercel';
+import type { LanguageModelV1 } from '@ai-sdk/provider';
 import { createProviderRegistry } from 'ai';
 
-const anthropic = createAnthropic({
-  apiKey: process.env['ANTHROPIC_API_KEY'],
-});
+const vercelApiKey = process.env['VERCEL_AI_API_KEY'];
 
-const openai = createOpenAI({
-  apiKey: process.env['OPENAI_API_KEY'],
-});
+if (!vercelApiKey) {
+  // Falha no boot. Antes o erro só aparecia tarde, na hora da chamada à API,
+  // e vinha embrulhado pelo provider — difícil de diagnosticar.
+  throw new Error(
+    'VERCEL_AI_API_KEY não está definida. ' +
+      'Verifique o .env da raiz e o loadEnvConfig em apps/web/next.config.ts.',
+  );
+}
 
-const google = createGoogleGenerativeAI({
-  apiKey: process.env['GOOGLE_GENERATIVE_AI_API_KEY'] ?? process.env['GOOGLE_API_KEY'],
+const vercel = createVercel({
+  apiKey: vercelApiKey,
+  baseURL: 'https://ai-gateway.vercel.sh/v1',
 });
 
 export const registry = createProviderRegistry({
-  anthropic,
-  openai,
-  google,
+  vercel,
 });
 
-export type ProviderName = 'anthropic' | 'openai' | 'google';
+export type ProviderName = 'vercel';
 
 // Mapa explícito modelo -> provider. Mantém a fonte da verdade aqui no pacote
 // de IA (não no front), e evita heurísticas frágeis baseadas em prefixo.
 const PROVIDER_OF: Record<string, ProviderName> = {
-  'claude-sonnet-4-5': 'anthropic',
-  'claude-opus-4-7': 'anthropic',
-  'claude-haiku-4-5': 'anthropic',
-  'gpt-4o': 'openai',
-  'gpt-4o-mini': 'openai',
-  'gemini-2.0-flash': 'google',
-  'gemini-1.5-pro': 'google',
+  'gemini-2.0-flash': 'vercel',
+  'gemini-1.5-pro': 'vercel',
+  'claude-sonnet-4-5': 'vercel',
 };
 
 export type KnownModelId = keyof typeof PROVIDER_OF;
@@ -43,14 +39,19 @@ export function isKnownModelId(id: string): id is KnownModelId {
 }
 
 /**
- * Retorna o LanguageModelV2 correspondente ao id. Os ids são os mesmos
+ * Retorna o LanguageModelV1 correspondente ao id. Os ids são os mesmos
  * usados no front (apps/web/src/lib/models.ts). Lança se o id for desconhecido
  * — preferimos quebrar cedo a chamar um provider errado.
  */
-export function getModel(modelId: string): LanguageModelV2 {
+export function getModel(modelId: string): LanguageModelV1 {
   const provider = PROVIDER_OF[modelId];
   if (!provider) {
-    throw new Error(`Modelo desconhecido: "${modelId}". Adicione em packages/ai/src/providers.ts.`);
+    // JSON.stringify revela whitespace/zero-width chars ("gemini-2.0-flash "
+    // ou "​gemini..."); listar os válidos torna o diff óbvio.
+    const known = Object.keys(PROVIDER_OF).map((k) => `"${k}"`).join(', ');
+    throw new Error(
+      `Modelo desconhecido: ${JSON.stringify(modelId)}. Conhecidos: ${known}.`,
+    );
   }
   return registry.languageModel(`${provider}:${modelId}`);
 }

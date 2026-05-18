@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type UIMessage } from 'ai';
+import type { Message } from 'ai';
 import { toast } from 'sonner';
 
 import { ScrollArea } from '@repo/ui/components/scroll-area';
@@ -22,7 +22,7 @@ export function Chat({
   initialModel,
 }: {
   conversationId: string;
-  initialMessages: UIMessage[];
+  initialMessages: Message[];
   initialModel: string;
 }) {
   const { selectedModel, setSelectedModel } = useAppShell();
@@ -38,39 +38,31 @@ export function Chat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
-  // Body do transport tem que ler o modelo atual a cada envio (usuário pode
-  // trocar no meio da conversa). `Resolvable<object>` aceita função.
+  // Body é capturado no append (usuário pode trocar de modelo no meio da
+  // conversa). Ref evita recriar o handler a cada mudança de selectedModel.
   const modelRef = React.useRef(selectedModel);
   React.useEffect(() => {
     modelRef.current = selectedModel;
   }, [selectedModel]);
 
-  const transport = React.useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: '/api/chat',
-        body: () => ({ conversationId, model: modelRef.current }),
-      }),
-    [conversationId],
-  );
-
-  const { messages, sendMessage, status, stop, error, clearError } = useChat({
+  const { messages, append, status, stop, error } = useChat({
     id: conversationId,
-    messages: initialMessages,
-    transport,
+    api: '/api/chat',
+    initialMessages,
+    body: { conversationId, model: selectedModel },
     onError: (err) => {
       console.error('[chat]', err);
       toast.error('Erro ao enviar mensagem.');
     },
   });
 
-  // Mostra o erro como toast e libera o estado para o usuário tentar de novo.
+  // Mostra o erro como toast. v4 não tem clearError; o próximo append/reload
+  // sobrescreve o estado, então só notificamos.
   React.useEffect(() => {
     if (error) {
       toast.error(error.message || 'Erro ao gerar resposta.');
-      clearError();
     }
-  }, [error, clearError]);
+  }, [error]);
 
   // -- Pending message (vem da landing page via sessionStorage) ---------------
   const sentPendingRef = React.useRef(false);
@@ -81,7 +73,10 @@ export function Chat({
       if (pending && pending.trim().length > 0) {
         sentPendingRef.current = true;
         window.sessionStorage.removeItem(pendingMessageKey(conversationId));
-        void sendMessage({ text: pending });
+        void append(
+          { role: 'user', content: pending },
+          { body: { conversationId, model: modelRef.current } },
+        );
       }
     } catch {
       // sessionStorage indisponível — ignora.
@@ -140,8 +135,13 @@ export function Chat({
       <div className="border-t px-4 pt-3 pb-4">
         <div className="mx-auto w-full max-w-3xl">
           <Composer
-            onSubmit={(text) => sendMessage({ text })}
-            onStop={() => void stop()}
+            onSubmit={(text) => {
+              void append(
+                { role: 'user', content: text },
+                { body: { conversationId, model: modelRef.current } },
+              );
+            }}
+            onStop={() => stop()}
             isStreaming={isStreaming}
             autoFocus
           />

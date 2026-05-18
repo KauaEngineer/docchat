@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 export const getCurrentTime = tool({
   description: 'Retorna a data e hora atuais no fuso UTC.',
-  inputSchema: z.object({}),
+  parameters: z.object({}),
   execute: async () => ({
     iso: new Date().toISOString(),
     timestamp: Date.now(),

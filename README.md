@@ -13,7 +13,7 @@ Monorepo do portfólio com chatbot integrado. Construído com **Turborepo + pnpm
 | UI           | React 19, Tailwind v4, Shadcn/UI             |
 | Banco        | PostgreSQL via Prisma                        |
 | Auth         | Better Auth                                  |
-| IA           | Vercel AI SDK (Anthropic / OpenAI / Google)  |
+| IA           | Vercel AI SDK (Google Gemini)                |
 | Storage      | Cloudflare R2 (S3-compatible)                |
 | Linguagem    | TypeScript strict                            |
 
@@ -79,8 +79,6 @@ Variáveis necessárias:
 | `DATABASE_URL`                    | String de conexão PostgreSQL                                           |
 | `BETTER_AUTH_SECRET`              | Secret do Better Auth (gere com `openssl rand -base64 32`)             |
 | `BETTER_AUTH_URL`                 | URL pública da app (em dev: `http://localhost:3000`)                   |
-| `ANTHROPIC_API_KEY`               | API key da Anthropic (Claude)                                          |
-| `OPENAI_API_KEY`                  | API key da OpenAI                                                      |
 | `GOOGLE_GENERATIVE_AI_API_KEY`    | API key do Google Gemini                                               |
 | `R2_ACCOUNT_ID`                   | ID da conta Cloudflare                                                 |
 | `R2_ACCESS_KEY_ID`                | Access key do R2                                                       |
@@ -138,15 +136,16 @@ O `components.json` já está configurado para usar Tailwind v4 e o CSS de tema 
 
 ---
 
-## Adicionando um provider de IA
+## Adicionando um modelo de IA
 
-Edite `packages/ai/src/providers/index.ts` para registrar o modelo:
+Edite `packages/ai/src/providers.ts` e adicione a entrada no `PROVIDER_OF`:
 
 ```ts
-export const models = {
-  // ...
-  'meu-modelo': anthropic('claude-sonnet-4-6'),
-} as const;
+const PROVIDER_OF: Record<string, ProviderName> = {
+  'gemini-2.0-flash': 'google',
+  'gemini-1.5-pro': 'google',
+  // 'meu-modelo': 'google',
+};
 ```
 
 E use no app:
@@ -156,7 +155,7 @@ import { streamText } from 'ai';
 import { getModel } from '@repo/ai';
 
 const result = streamText({
-  model: getModel('claude-sonnet-4-6'),
+  model: getModel('gemini-2.0-flash'),
   messages,
 });
 ```

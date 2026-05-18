@@ -1,4 +1,4 @@
-export type ModelProvider = 'anthropic' | 'openai' | 'google';
+export type ModelProvider = 'google';
 
 export interface ModelDef {
   id: string;
@@ -10,46 +10,6 @@ export interface ModelDef {
 }
 
 export const MODELS: readonly ModelDef[] = [
-  {
-    id: 'claude-sonnet-4-5',
-    provider: 'anthropic',
-    displayName: 'Claude Sonnet 4.5',
-    contextWindow: 200_000,
-    supportsVision: true,
-    supportsTools: true,
-  },
-  {
-    id: 'claude-opus-4-7',
-    provider: 'anthropic',
-    displayName: 'Claude Opus 4.7',
-    contextWindow: 200_000,
-    supportsVision: true,
-    supportsTools: true,
-  },
-  {
-    id: 'claude-haiku-4-5',
-    provider: 'anthropic',
-    displayName: 'Claude Haiku 4.5',
-    contextWindow: 200_000,
-    supportsVision: true,
-    supportsTools: true,
-  },
-  {
-    id: 'gpt-4o',
-    provider: 'openai',
-    displayName: 'GPT-4o',
-    contextWindow: 128_000,
-    supportsVision: true,
-    supportsTools: true,
-  },
-  {
-    id: 'gpt-4o-mini',
-    provider: 'openai',
-    displayName: 'GPT-4o mini',
-    contextWindow: 128_000,
-    supportsVision: true,
-    supportsTools: true,
-  },
   {
     id: 'gemini-2.0-flash',
     provider: 'google',
@@ -68,11 +28,9 @@ export const MODELS: readonly ModelDef[] = [
   },
 ] as const;
 
-export const DEFAULT_MODEL_ID = 'claude-sonnet-4-5';
+export const DEFAULT_MODEL_ID = 'gemini-2.0-flash';
 
 export const PROVIDER_LABELS: Record<ModelProvider, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
   google: 'Google',
 };
 

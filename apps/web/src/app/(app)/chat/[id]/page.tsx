@@ -2,7 +2,7 @@ import * as React from 'react';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 
-import type { UIMessage, UIMessagePart } from 'ai';
+import type { Message } from 'ai';
 
 import { MessageRole, prisma } from '@repo/database';
 
@@ -34,12 +34,12 @@ export default async function ChatConversationPage({
 
   if (!conversation) notFound();
 
-  const initialMessages: UIMessage[] = conversation.messages
+  const initialMessages: Message[] = conversation.messages
     .filter((m) => m.role !== MessageRole.TOOL)
     .map((m) => ({
       id: m.id,
       role: dbRoleToUIRole(m.role),
-      parts: m.content as unknown as UIMessagePart<never, never>[],
+      content: partsToText(m.content),
     }));
 
   return (
@@ -62,4 +62,25 @@ function dbRoleToUIRole(role: MessageRole): 'user' | 'assistant' | 'system' {
     case MessageRole.TOOL:
       return 'assistant';
   }
+}
+
+// Mensagens são persistidas como array de parts JSON (ver api/chat/route.ts).
+// Convertemos pra string aqui porque v4 Message espera `content: string`.
+function partsToText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  const out: string[] = [];
+  for (const p of content) {
+    if (
+      p !== null &&
+      typeof p === 'object' &&
+      'type' in p &&
+      (p as { type: unknown }).type === 'text' &&
+      'text' in p &&
+      typeof (p as { text: unknown }).text === 'string'
+    ) {
+      out.push((p as { text: string }).text);
+    }
+  }
+  return out.join('\n');
 }

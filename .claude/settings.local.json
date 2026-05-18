@@ -8,7 +8,12 @@
       "Bash(npm view *)",
       "Bash(pnpm install *)",
       "Bash(npx --prefix /c/Users/kauan/documents/chatbot-portfolio/apps/web tsc --noEmit -p /c/Users/kauan/documents/chatbot-portfolio/apps/web/tsconfig.json)",
-      "Bash(find /c/Users/kauan/documents/chatbot-portfolio/node_modules/.pnpm/@ai-sdk+react@1* -name \"index.d.ts\")"
+      "Bash(find /c/Users/kauan/documents/chatbot-portfolio/node_modules/.pnpm/@ai-sdk+react@1* -name \"index.d.ts\")",
+      "Bash(npx --prefix /c/Users/kauan/documents/chatbot-portfolio/packages/ai tsc --noEmit -p /c/Users/kauan/documents/chatbot-portfolio/packages/ai/tsconfig.json)",
+      "Bash(find /c/Users/kauan/documents/chatbot-portfolio/node_modules/.pnpm/@ai-sdk+anthropic@2* -name \"*.d.ts\")",
+      "Bash(grep -nE \"sendMessages|fetch.*api|messages,\\\\s*$|trigger:\" /c/Users/kauan/documents/chatbot-portfolio/node_modules/.pnpm/ai@5.0.188_zod@3.25.76/node_modules/ai/dist/index.js)",
+      "Bash(pnpm --filter web typecheck)",
+      "Bash(pnpm --filter @repo/ai typecheck)"
     ]
   }
 }

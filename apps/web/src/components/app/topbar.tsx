@@ -15,6 +15,8 @@ import {
   DropdownMenuTrigger,
 } from '@repo/ui/components/dropdown-menu';
 
+import { DEFAULT_MODEL_ID, MODELS, getModel } from '@/lib/models';
+
 import { useAppShell } from './sidebar';
 import { UserMenu, type UserMenuUser } from './user-menu';
 
@@ -22,21 +24,6 @@ interface TopbarConversation {
   id: string;
   title: string;
 }
-
-interface ModelOption {
-  id: string;
-  label: string;
-}
-
-const MODELS: readonly ModelOption[] = [
-  { id: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
-  { id: 'gpt-4o', label: 'GPT-4o' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
-  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-  { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-] as const;
 
 export function Topbar({
   user,
@@ -49,7 +36,8 @@ export function Topbar({
   const pathname = usePathname();
 
   const title = deriveTitle(pathname, conversations);
-  const currentModel = MODELS.find((m) => m.id === selectedModel) ?? MODELS[1]!;
+  const currentModel =
+    getModel(selectedModel) ?? getModel(DEFAULT_MODEL_ID) ?? MODELS[0]!;
 
   return (
     <header className="bg-background flex h-12 shrink-0 items-center justify-between gap-2 border-b px-2 lg:px-4">
@@ -70,7 +58,7 @@ export function Topbar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-1 text-xs">
-              {currentModel.label}
+              {currentModel.displayName}
               <ChevronDownIcon className="size-3.5" />
             </Button>
           </DropdownMenuTrigger>
@@ -79,7 +67,7 @@ export function Topbar({
             <DropdownMenuSeparator />
             {MODELS.map((m) => (
               <DropdownMenuItem key={m.id} onSelect={() => setSelectedModel(m.id)}>
-                {m.label}
+                {m.displayName}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>

@@ -2,17 +2,18 @@
 
 import * as React from 'react';
 import { Loader2Icon } from 'lucide-react';
-import type { UIMessage } from 'ai';
-import type { UseChatHelpers } from '@ai-sdk/react';
+import type { Message } from 'ai';
 
 import { MessageBubble } from './message-bubble';
+
+export type ChatStatus = 'submitted' | 'streaming' | 'ready' | 'error';
 
 export function MessageList({
   messages,
   status,
 }: {
-  messages: UIMessage[];
-  status: UseChatHelpers<UIMessage>['status'];
+  messages: Message[];
+  status: ChatStatus;
 }) {
   const showThinking =
     (status === 'submitted' || status === 'streaming') &&

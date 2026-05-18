@@ -53,8 +53,13 @@ export function ModelSelector({ className }: { className?: string }) {
   React.useEffect(() => {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored && isValidModelId(stored) && stored !== selectedModel) {
-        setSelectedModel(stored);
+      if (!stored) return;
+      if (isValidModelId(stored)) {
+        if (stored !== selectedModel) setSelectedModel(stored);
+      } else {
+        // Modelo foi removido de MODELS (provider deprecado etc.) — limpa
+        // pra não restaurar lixo em todo mount.
+        window.localStorage.removeItem(STORAGE_KEY);
       }
     } catch {
       // localStorage indisponível (modo privado, etc.) — usa o default.
@@ -145,14 +150,6 @@ function ModelMenuItem({
 
 function ProviderIcon({ provider }: { provider: ModelProvider }) {
   const styles: Record<ModelProvider, { letter: string; className: string }> = {
-    anthropic: {
-      letter: 'A',
-      className: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
-    },
-    openai: {
-      letter: 'O',
-      className: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
-    },
     google: {
       letter: 'G',
       className: 'bg-sky-500/15 text-sky-700 dark:text-sky-400',

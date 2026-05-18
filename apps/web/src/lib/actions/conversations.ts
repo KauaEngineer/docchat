@@ -7,7 +7,7 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@repo/database';
 
 import { auth } from '@/lib/auth';
-import { isValidModelId } from '@/lib/models';
+import { DEFAULT_MODEL_ID, isValidModelId } from '@/lib/models';
 import type {
   ConversationSummary,
   GroupedConversations,
@@ -61,8 +61,17 @@ export async function listConversations(): Promise<GroupedConversations> {
 
 export async function createConversation(model: string): Promise<{ id: string }> {
   const userId = await requireUserId();
+  // Guarda server-side contra valores stale do client (localStorage com modelo
+  // removido, bundle antigo, etc.). Cai no default em vez de criar conversa
+  // "morta" que quebra ao abrir.
+  const safeModel = isValidModelId(model) ? model : DEFAULT_MODEL_ID;
+  if (safeModel !== model) {
+    console.warn(
+      `[createConversation] modelo "${model}" inválido — usando default "${DEFAULT_MODEL_ID}".`,
+    );
+  }
   const conversation = await prisma.conversation.create({
-    data: { userId, model, title: 'Nova conversa' },
+    data: { userId, model: safeModel, title: 'Nova conversa' },
     select: { id: true },
   });
   revalidateShell();

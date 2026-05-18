@@ -5,13 +5,15 @@ import { BotIcon, CheckIcon, CopyIcon } from 'lucide-react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
-import type { UIMessage } from 'ai';
+import type { Message } from 'ai';
 
 import { Button } from '@repo/ui/components/button';
 
-export function MessageBubble({ message }: { message: UIMessage }) {
+export function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
-  const text = extractText(message);
+  // v4: o conteúdo canônico de uma mensagem é a string `content`.
+  // streamText acumula o texto aqui durante o streaming.
+  const text = message.content;
 
   if (isUser) {
     return (
@@ -30,13 +32,7 @@ export function MessageBubble({ message }: { message: UIMessage }) {
       </div>
 
       <div className="min-w-0 flex-1">
-        {message.parts.map((part, i) => {
-          if (part.type === 'text') {
-            return <Markdown key={i} content={part.text} />;
-          }
-          // tool-*, file, reasoning, etc. — Fases 8/9.
-          return null;
-        })}
+        <Markdown content={text} />
 
         {text.length > 0 ? (
           <div className="mt-1 flex opacity-0 transition-opacity group-hover:opacity-100">
@@ -46,13 +42,6 @@ export function MessageBubble({ message }: { message: UIMessage }) {
       </div>
     </div>
   );
-}
-
-function extractText(message: UIMessage): string {
-  return message.parts
-    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-    .map((p) => p.text)
-    .join('\n\n');
 }
 
 // -----------------------------------------------------------------------------
