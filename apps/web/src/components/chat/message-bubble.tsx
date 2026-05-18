@@ -1,7 +1,14 @@
 'use client';
 
 import * as React from 'react';
-import { BotIcon, CheckIcon, CopyIcon } from 'lucide-react';
+import {
+  BotIcon,
+  CheckIcon,
+  CopyIcon,
+  PencilIcon,
+  RefreshCwIcon,
+  XIcon,
+} from 'lucide-react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
@@ -9,21 +16,176 @@ import type { Message } from 'ai';
 
 import { Button } from '@repo/ui/components/button';
 
-export function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === 'user';
-  // v4: o conteúdo canônico de uma mensagem é a string `content`.
-  // streamText acumula o texto aqui durante o streaming.
-  const text = message.content;
+export interface MessageBubbleProps {
+  message: Message;
+  isLastAssistant?: boolean;
+  onRegenerate?: () => void;
+  onEdit?: (messageId: string, newContent: string) => void;
+}
 
-  if (isUser) {
+export function MessageBubble({
+  message,
+  isLastAssistant = false,
+  onRegenerate,
+  onEdit,
+}: MessageBubbleProps) {
+  if (message.role === 'user') {
+    return <UserBubble message={message} onEdit={onEdit} />;
+  }
+  return (
+    <AssistantBubble
+      message={message}
+      isLastAssistant={isLastAssistant}
+      onRegenerate={onRegenerate}
+    />
+  );
+}
+
+// -----------------------------------------------------------------------------
+// User bubble — bolha azul à direita, com modo de edição inline.
+// -----------------------------------------------------------------------------
+
+function UserBubble({
+  message,
+  onEdit,
+}: {
+  message: Message;
+  onEdit?: (messageId: string, newContent: string) => void;
+}) {
+  const [editing, setEditing] = React.useState(false);
+
+  if (editing && onEdit) {
     return (
-      <div className="flex w-full justify-end py-2">
-        <div className="bg-muted text-foreground max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-sm whitespace-pre-wrap break-words">
-          {text}
-        </div>
-      </div>
+      <EditForm
+        initialValue={message.content}
+        onCancel={() => setEditing(false)}
+        onSave={(next) => {
+          setEditing(false);
+          onEdit(message.id, next);
+        }}
+      />
     );
   }
+
+  return (
+    <div className="group flex w-full flex-col items-end py-2">
+      <div className="bg-muted text-foreground max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-sm whitespace-pre-wrap break-words">
+        {message.content}
+      </div>
+      {onEdit ? (
+        <div className="mt-1 flex opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setEditing(true)}
+            aria-label="Editar mensagem"
+            className="text-muted-foreground h-7 gap-1.5 px-2 text-xs"
+          >
+            <PencilIcon className="size-3.5" />
+            Editar
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function EditForm({
+  initialValue,
+  onSave,
+  onCancel,
+}: {
+  initialValue: string;
+  onSave: (value: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = React.useState(initialValue);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // Foca + posiciona caret no fim ao abrir.
+  React.useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+
+  // Auto-resize do textarea conforme o conteúdo (mesmo padrão do Composer).
+  React.useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = '0px';
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+  }, [value]);
+
+  const trimmed = value.trim();
+  const canSave = trimmed.length > 0 && trimmed !== initialValue.trim();
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onCancel();
+    }
+    // Cmd/Ctrl+Enter salva — atalho comum em editores inline.
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && canSave) {
+      e.preventDefault();
+      onSave(trimmed);
+    }
+  }
+
+  return (
+    <div className="flex w-full justify-end py-2">
+      <div className="bg-muted/60 flex w-full max-w-[85%] flex-col gap-2 rounded-2xl border p-3">
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          aria-label="Editar mensagem"
+          className="max-h-[320px] min-h-[44px] w-full resize-none bg-transparent text-sm leading-6 outline-none"
+        />
+        <div className="flex justify-end gap-1.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            className="h-7 gap-1.5 px-2 text-xs"
+          >
+            <XIcon className="size-3.5" />
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => onSave(trimmed)}
+            disabled={!canSave}
+            className="h-7 gap-1.5 px-2 text-xs"
+          >
+            <CheckIcon className="size-3.5" />
+            Salvar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Assistant bubble — markdown + ações (copiar, regenerar).
+// -----------------------------------------------------------------------------
+
+function AssistantBubble({
+  message,
+  isLastAssistant,
+  onRegenerate,
+}: {
+  message: Message;
+  isLastAssistant: boolean;
+  onRegenerate?: () => void;
+}) {
+  const text = message.content;
+  const showActions = text.length > 0;
 
   return (
     <div className="group flex w-full gap-3 py-2">
@@ -34,9 +196,21 @@ export function MessageBubble({ message }: { message: Message }) {
       <div className="min-w-0 flex-1">
         <Markdown content={text} />
 
-        {text.length > 0 ? (
-          <div className="mt-1 flex opacity-0 transition-opacity group-hover:opacity-100">
+        {showActions ? (
+          <div className="mt-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
             <CopyButton text={text} />
+            {isLastAssistant && onRegenerate ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRegenerate}
+                aria-label="Regenerar resposta"
+                className="text-muted-foreground h-7 gap-1.5 px-2 text-xs"
+              >
+                <RefreshCwIcon className="size-3.5" />
+                Regenerar
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -173,4 +347,3 @@ function CopyButton({ text }: { text: string }) {
     </Button>
   );
 }
-

@@ -34,6 +34,9 @@ const RequestSchema = z.object({
     .min(1),
   conversationId: z.string().min(1),
   model: z.string().min(1),
+  // Edição inline: id da user message que está sendo reeditada. O servidor
+  // apaga essa msg + todas posteriores (cascade), depois persiste a nova versão.
+  editFromMessageId: z.string().min(1).optional(),
 });
 
 const idGen = createIdGenerator();
@@ -55,7 +58,7 @@ export async function POST(req: Request): Promise<Response> {
       return jsonError(400, 'Body inválido.', detail);
     }
 
-    const { messages, conversationId, model } = parsed.data;
+    const { messages, conversationId, model, editFromMessageId } = parsed.data;
 
     const conversation = await prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -66,20 +69,78 @@ export async function POST(req: Request): Promise<Response> {
       return jsonError(403, 'Acesso negado.');
     }
 
-    const lastUserMessage = findLastUserMessage(messages);
-    if (!lastUserMessage) {
+    const lastReqMessage = messages[messages.length - 1]!;
+    const lastReqUser = findLastUserMessage(messages);
+    if (!lastReqUser) {
       return jsonError(400, 'Nenhuma mensagem de usuário enviada.');
     }
 
-    // Source of truth = banco. Persiste a user message antes de carregar o
-    // histórico para que o que vai pro modelo bata com o que ficou salvo.
-    await prisma.message.create({
-      data: {
-        conversationId,
-        role: MessageRole.USER,
-        content: textToParts(lastUserMessage.content) as unknown as Prisma.InputJsonValue,
-      },
-    });
+    // -------------------------------------------------------------------------
+    // Decisão de modo: edição, regenerate, ou novo turno.
+    //
+    // Edição (editFromMessageId vem do cliente):
+    //   apaga a msg-alvo + tudo depois (cascade cuida de Artifact/Attachment),
+    //   depois persiste a versão editada como nova user message.
+    //
+    // Regenerate explícito (request termina em assistant):
+    //   defensivo — useChat.reload() do v4 nunca produz isso, mas mantemos
+    //   pra cobrir clientes/fluxos custom.
+    //
+    // Regenerate via reload() do v4:
+    //   o SDK strip a última assistant localmente antes de reenviar. O request
+    //   acaba com a MESMA user que já está no banco. Detectamos comparando
+    //   contagem de user-msgs do request vs banco — se igual, é regenerate
+    //   (apaga trailing assistant/tool sem duplicar a user).
+    //
+    // Novo turno:
+    //   request tem uma user a mais que o banco. Persiste normalmente.
+    // -------------------------------------------------------------------------
+
+    if (editFromMessageId) {
+      const target = await prisma.message.findUnique({
+        where: { id: editFromMessageId },
+        select: { conversationId: true, createdAt: true },
+      });
+      if (!target || target.conversationId !== conversationId) {
+        return jsonError(404, 'Mensagem para editar não encontrada.');
+      }
+      // Branch destrutivo (escopo de portfólio — sem manter histórico).
+      // onDelete: Cascade em Artifact/Attachment limpa as dependências.
+      await prisma.message.deleteMany({
+        where: {
+          conversationId,
+          createdAt: { gte: target.createdAt },
+        },
+      });
+      await prisma.message.create({
+        data: {
+          conversationId,
+          role: MessageRole.USER,
+          content: textToParts(lastReqUser.content) as unknown as Prisma.InputJsonValue,
+        },
+      });
+    } else if (lastReqMessage.role === 'assistant') {
+      await deleteTrailingAfterLastUser(conversationId);
+    } else {
+      const reqUserCount = messages.filter((m) => m.role === 'user').length;
+      const dbUserCount = await prisma.message.count({
+        where: { conversationId, role: MessageRole.USER },
+      });
+
+      if (reqUserCount === dbUserCount) {
+        // Regenerate via reload(): mesma user que já existe no banco.
+        await deleteTrailingAfterLastUser(conversationId);
+      } else {
+        // Novo turno: persiste a user message.
+        await prisma.message.create({
+          data: {
+            conversationId,
+            role: MessageRole.USER,
+            content: textToParts(lastReqUser.content) as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+    }
 
     const dbMessages = await prisma.message.findMany({
       where: { conversationId },
@@ -87,8 +148,6 @@ export async function POST(req: Request): Promise<Response> {
       select: { id: true, role: true, content: true },
     });
 
-    // Mensagens vindas do banco têm id; as do request não. Para o convertToCoreMessages,
-    // só role + content importam.
     const history: Message[] = dbMessages
       .filter((m) => m.role !== MessageRole.TOOL)
       .map((m) => ({
@@ -96,10 +155,6 @@ export async function POST(req: Request): Promise<Response> {
         role: dbRoleToUIRole(m.role),
         content: partsToText(m.content),
       }));
-
-    const isFirstExchange =
-      dbMessages.filter((m) => m.role === MessageRole.ASSISTANT).length === 0 &&
-      conversation.title === 'Nova conversa';
 
     const userName = session.user.name ?? undefined;
 
@@ -116,8 +171,6 @@ export async function POST(req: Request): Promise<Response> {
           // depois quebram a conversão pro modelo na próxima rodada.
           if (!text || text.trim().length === 0) return;
 
-          // Mesmo se abortado pelo cliente, persiste o que já temos —
-          // perder o parcial é pior que gravar uma resposta truncada.
           await prisma.message.create({
             data: {
               id: idGen(),
@@ -134,8 +187,18 @@ export async function POST(req: Request): Promise<Response> {
             data: { updatedAt: new Date() },
           });
 
-          if (finishReason !== 'error' && isFirstExchange) {
-            await generateAndSaveTitle(conversationId, lastUserMessage.content);
+          // Título: gera APENAS se ainda estiver vazio/null. Fresh read pra
+          // evitar race com requests concorrentes que já possam ter setado.
+          // Sem essa checagem, regenerate/edit triggariam regeração do título
+          // a cada turno (que é o que o spec proíbe).
+          if (finishReason !== 'error') {
+            const fresh = await prisma.conversation.findUnique({
+              where: { id: conversationId },
+              select: { title: true },
+            });
+            if (!fresh?.title || fresh.title.trim() === '') {
+              await generateAndSaveTitle(conversationId, lastReqUser.content);
+            }
           }
 
           revalidatePath('/chat', 'layout');
@@ -158,6 +221,23 @@ export async function POST(req: Request): Promise<Response> {
     console.error('[chat] route error:', err);
     return jsonError(500, 'Erro interno.');
   }
+}
+
+// Apaga tudo após a última user message — tipicamente a assistant gerada
+// nessa rodada + quaisquer TOOL messages associadas. Usado em regenerate.
+async function deleteTrailingAfterLastUser(conversationId: string): Promise<void> {
+  const lastUser = await prisma.message.findFirst({
+    where: { conversationId, role: MessageRole.USER },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+  if (!lastUser) return;
+  await prisma.message.deleteMany({
+    where: {
+      conversationId,
+      createdAt: { gt: lastUser.createdAt },
+    },
+  });
 }
 
 function findLastUserMessage(

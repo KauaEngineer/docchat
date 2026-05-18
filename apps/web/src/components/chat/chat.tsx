@@ -45,7 +45,7 @@ export function Chat({
     modelRef.current = selectedModel;
   }, [selectedModel]);
 
-  const { messages, append, status, stop, error } = useChat({
+  const { messages, append, reload, setMessages, status, stop, error } = useChat({
     id: conversationId,
     api: '/api/chat',
     initialMessages,
@@ -83,6 +83,50 @@ export function Chat({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
+
+  // -- Regenerate / edit -----------------------------------------------------
+
+  // Regenerate: useChat.reload() já strip a última assistant localmente e
+  // reenvia. O servidor detecta (reqUserCount === dbUserCount) e apaga a
+  // assistant correspondente no banco — ver api/chat/route.ts.
+  const handleRegenerate = React.useCallback((): void => {
+    void reload({ body: { conversationId, model: modelRef.current } });
+  }, [reload, conversationId]);
+
+  // Edit: trunca o estado local (setMessages) antes de fazer o append.
+  //
+  // POR QUÊ setMessages PRIMEIRO?
+  // useChat.append() sempre faz `messagesRef.current.concat(novaMsg)` e manda
+  // o array inteiro pro servidor. Se não truncarmos antes, o request vai com
+  // toda a conversa + a nova user editada no fim — o que o servidor trataria
+  // como um novo turno comum, em vez de uma edição. Além disso, a UI ficaria
+  // mostrando as msgs "antigas" pós-edição até o próximo refetch.
+  //
+  // Ao truncar, garantimos:
+  //   1. UI imediatamente reflete o branch novo (sem flash da resposta antiga).
+  //   2. O array enviado pro server é coerente com o que o editFromMessageId
+  //      vai produzir no banco depois da cascade.
+  //
+  // setMessages do v4 atualiza messagesRef sincronamente, então o append
+  // logo abaixo já enxerga o estado truncado.
+  const handleEdit = React.useCallback(
+    (messageId: string, newContent: string): void => {
+      const idx = messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return;
+      setMessages(messages.slice(0, idx));
+      void append(
+        { role: 'user', content: newContent },
+        {
+          body: {
+            conversationId,
+            model: modelRef.current,
+            editFromMessageId: messageId,
+          },
+        },
+      );
+    },
+    [messages, setMessages, append, conversationId],
+  );
 
   // -- Auto-scroll -----------------------------------------------------------
   // Estratégia: trackeia se o usuário está "preso no fundo". Se sim, novas
@@ -129,7 +173,12 @@ export function Chat({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ScrollArea ref={scrollRootRef} className="min-h-0 flex-1">
-        <MessageList messages={messages} status={status} />
+        <MessageList
+          messages={messages}
+          status={status}
+          onRegenerate={isStreaming ? undefined : handleRegenerate}
+          onEdit={isStreaming ? undefined : handleEdit}
+        />
       </ScrollArea>
 
       <div className="border-t px-4 pt-3 pb-4">
