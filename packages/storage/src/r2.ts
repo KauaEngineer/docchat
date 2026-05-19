@@ -108,6 +108,24 @@ export async function deleteFromR2(key: string): Promise<void> {
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
+/**
+ * Baixa um objeto inteiro pra memória como Buffer. Conveniente pra ingestão
+ * (PDF/text parsing) — não use pra arquivos enormes em rotas com memory limit.
+ */
+export async function downloadFromR2(key: string): Promise<Buffer> {
+  const client = getClient();
+  const bucket = getBucket();
+  const result = await client.send(
+    new GetObjectCommand({ Bucket: bucket, Key: key }),
+  );
+  if (!result.Body) {
+    throw new Error(`[r2] objeto vazio ou inexistente: ${key}`);
+  }
+  // AWS SDK v3: Body implementa o helper transformToByteArray (Node + browser).
+  const bytes = await result.Body.transformToByteArray();
+  return Buffer.from(bytes);
+}
+
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------

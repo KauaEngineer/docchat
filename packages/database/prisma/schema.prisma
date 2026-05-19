@@ -185,15 +185,19 @@ model Attachment {
 // -----------------------------------------------------------------------------
 
 model Document {
-  id        String         @id @default(cuid())
-  userId    String
-  filename  String
-  mimeType  String
-  size      Int
-  r2Key     String         @db.VarChar(512)
-  status    DocumentStatus @default(PROCESSING)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id           String         @id @default(cuid())
+  userId       String
+  filename     String
+  mimeType     String
+  size         Int
+  r2Key        String         @db.VarChar(512)
+  status       DocumentStatus @default(PROCESSING)
+  // Mensagem do último erro de ingestão quando status = FAILED. Limpa
+  // (set null) ao re-ingerir com sucesso. @db.Text porque stack/err
+  // genéricos podem passar dos 255 chars.
+  errorMessage String?        @db.Text
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   chunks DocumentChunk[]
