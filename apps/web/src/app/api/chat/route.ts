@@ -15,7 +15,14 @@ import { z } from 'zod';
 import { getModel, systemPrompt } from '@repo/ai';
 import { embedQuery } from '@repo/ai/rag';
 import { getTools } from '@repo/ai/tools';
-import { MessageRole, prisma, searchSimilarChunks, type Prisma } from '@repo/database';
+import {
+  ArtifactKind,
+  MessageRole,
+  getLatestArtifact,
+  prisma,
+  searchSimilarChunks,
+  type Prisma,
+} from '@repo/database';
 
 import { auth } from '@/lib/auth';
 
@@ -265,7 +272,7 @@ export async function POST(req: Request): Promise<Response> {
       // token). Sem isso o cliente só vê `call` → `result`, perdendo o
       // feedback "Preparando ..." enquanto o modelo monta o args JSON.
       toolCallStreaming: true,
-      onFinish: async ({ text, finishReason }) => {
+      onFinish: async ({ text, finishReason, steps }) => {
         // O close precisa rodar mesmo se a persistência abaixo der ruim,
         // senão a conexão fica pendurada e o cliente trava no streaming.
         try {
@@ -274,14 +281,30 @@ export async function POST(req: Request): Promise<Response> {
           // depois quebram a conversão pro modelo na próxima rodada.
           if (!text || text.trim().length === 0) return;
 
-          await prisma.message.create({
+          const assistantMessage = await prisma.message.create({
             data: {
               id: idGen(),
               conversationId,
               role: MessageRole.ASSISTANT,
               content: assistantParts(text, ragSources) as unknown as Prisma.InputJsonValue,
             },
+            select: { id: true },
           });
+
+          // Artefatos: o modelo pode ter chamado createArtifact/updateArtifact
+          // em qualquer step do multi-step. Iteramos todos os steps e
+          // persistimos as rows linkadas à message recém-criada. Falhas aqui
+          // não abortam o turno — logamos e seguimos (o texto da resposta já
+          // foi salvo, o usuário não deve perder isso por um bug do artifact).
+          try {
+            await persistArtifactsFromSteps({
+              conversationId,
+              messageId: assistantMessage.id,
+              steps,
+            });
+          } catch (err) {
+            console.error('[chat] artifact persist error:', err);
+          }
 
           // Bump explícito do updatedAt — @updatedAt do Prisma só dispara em
           // writes na própria row de Conversation.
@@ -447,6 +470,106 @@ function assistantParts(text: string, sources: RagSource[]): StoredPart[] {
     parts.push({ type: 'rag-context', sources });
   }
   return parts;
+}
+
+// -----------------------------------------------------------------------------
+// Artefatos: materializa as tool calls de createArtifact/updateArtifact em
+// rows na tabela `artifacts`, ligadas à message recém-persistida.
+// -----------------------------------------------------------------------------
+
+interface StepLike {
+  toolCalls?: ReadonlyArray<{
+    toolCallId: string;
+    toolName: string;
+    args: unknown;
+  }>;
+  toolResults?: ReadonlyArray<{
+    toolCallId: string;
+    result: unknown;
+  }>;
+}
+
+interface CreateArtifactArgs {
+  kind: ArtifactKind;
+  title: string;
+  language?: string;
+  content: string;
+}
+
+interface UpdateArtifactArgs {
+  title: string;
+  content: string;
+}
+
+async function persistArtifactsFromSteps(args: {
+  conversationId: string;
+  messageId: string;
+  steps: readonly StepLike[];
+}): Promise<void> {
+  for (const step of args.steps) {
+    const calls = step.toolCalls ?? [];
+    const results = step.toolResults ?? [];
+
+    for (const call of calls) {
+      // Só persiste se a tool retornou success=true. Falhas (`{ error }`) ou
+      // resultados ausentes — o tool foi chamado mas o execute não rodou —
+      // são ignorados aqui; o registro existe no histórico do stream pra
+      // depuração, mas não vira artefato persistente.
+      const result = results.find((r) => r.toolCallId === call.toolCallId);
+      if (!isSuccessResult(result?.result)) continue;
+
+      if (call.toolName === 'createArtifact') {
+        const a = call.args as CreateArtifactArgs;
+        await prisma.artifact.create({
+          data: {
+            messageId: args.messageId,
+            kind: a.kind,
+            title: a.title,
+            content: a.content,
+            language: a.language ?? null,
+            version: 1,
+          },
+        });
+        continue;
+      }
+
+      if (call.toolName === 'updateArtifact') {
+        const a = call.args as UpdateArtifactArgs;
+        // "Atualizar" = nova row com version+1, herdando kind/language do
+        // último (o usuário pediu pra modificar o que já existia, não pra
+        // mudar a natureza do artefato).
+        const latest = await getLatestArtifact(args.conversationId, a.title);
+        if (!latest) {
+          // Modelo pediu update de um artefato que nunca foi criado —
+          // pode acontecer se o título não bater exatamente. Loga e segue;
+          // não promovemos pra create silencioso (escolha do modelo, não nossa).
+          console.warn(
+            `[chat] updateArtifact("${a.title}"): nenhum artefato anterior nesta conversa, ignorando.`,
+          );
+          continue;
+        }
+        await prisma.artifact.create({
+          data: {
+            messageId: args.messageId,
+            kind: latest.kind,
+            title: latest.title,
+            content: a.content,
+            language: latest.language,
+            version: latest.version + 1,
+          },
+        });
+      }
+    }
+  }
+}
+
+function isSuccessResult(result: unknown): boolean {
+  return (
+    result !== null &&
+    typeof result === 'object' &&
+    'success' in result &&
+    (result as { success: unknown }).success === true
+  );
 }
 
 // ----- RAG --------------------------------------------------------------------
