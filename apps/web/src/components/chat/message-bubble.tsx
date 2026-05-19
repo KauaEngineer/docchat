@@ -19,10 +19,12 @@ import type { Message, ToolInvocation } from 'ai';
 
 import { Button } from '@repo/ui/components/button';
 
+import { ArtifactPartCard } from './artifact-part-card';
 import { ToolInvocationCard } from './tool-invocation';
 
 export interface MessageBubbleProps {
   message: Message;
+  conversationId: string;
   isLastAssistant?: boolean;
   onRegenerate?: () => void;
   onEdit?: (messageId: string, newContent: string) => void;
@@ -30,6 +32,7 @@ export interface MessageBubbleProps {
 
 export function MessageBubble({
   message,
+  conversationId,
   isLastAssistant = false,
   onRegenerate,
   onEdit,
@@ -40,6 +43,7 @@ export function MessageBubble({
   return (
     <AssistantBubble
       message={message}
+      conversationId={conversationId}
       isLastAssistant={isLastAssistant}
       onRegenerate={onRegenerate}
     />
@@ -237,10 +241,12 @@ function EditForm({
 
 function AssistantBubble({
   message,
+  conversationId,
   isLastAssistant,
   onRegenerate,
 }: {
   message: Message;
+  conversationId: string;
   isLastAssistant: boolean;
   onRegenerate?: () => void;
 }) {
@@ -263,10 +269,22 @@ function AssistantBubble({
           if (item.kind === 'text') {
             return <Markdown key={`t-${i}`} content={item.text} />;
           }
+          // Artefatos têm UI dedicada: card clicável que abre o painel lateral.
+          // Os outros tools caem no card genérico (entrada/saída JSON).
+          const inv = item.invocation;
+          if (inv.toolName === 'createArtifact' || inv.toolName === 'updateArtifact') {
+            return (
+              <ArtifactPartCard
+                key={`art-${inv.toolCallId}`}
+                invocation={inv}
+                conversationId={conversationId}
+              />
+            );
+          }
           return (
             <ToolInvocationCard
-              key={`tool-${item.invocation.toolCallId}`}
-              invocation={item.invocation}
+              key={`tool-${inv.toolCallId}`}
+              invocation={inv}
             />
           );
         })}

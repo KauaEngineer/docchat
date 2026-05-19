@@ -10,11 +10,13 @@ export type ChatStatus = 'submitted' | 'streaming' | 'ready' | 'error';
 
 export function MessageList({
   messages,
+  conversationId,
   status,
   onRegenerate,
   onEdit,
 }: {
   messages: Message[];
+  conversationId: string;
   status: ChatStatus;
   onRegenerate?: () => void;
   onEdit?: (messageId: string, newContent: string) => void;
@@ -34,6 +36,7 @@ export function MessageList({
         <MessageBubble
           key={m.id}
           message={m}
+          conversationId={conversationId}
           isLastAssistant={m.id === lastAssistantId}
           onRegenerate={onRegenerate}
           onEdit={onEdit}

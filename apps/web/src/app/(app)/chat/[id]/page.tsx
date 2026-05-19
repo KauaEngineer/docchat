@@ -8,6 +8,7 @@ import { MessageRole, prisma } from '@repo/database';
 
 import { auth } from '@/lib/auth';
 
+import { ConversationLayout } from '@/components/artifacts/conversation-layout';
 import { Chat } from '@/components/chat/chat';
 
 export default async function ChatConversationPage({
@@ -59,11 +60,13 @@ export default async function ChatConversationPage({
     });
 
   return (
-    <Chat
-      conversationId={conversation.id}
-      initialMessages={initialMessages}
-      initialModel={conversation.model}
-    />
+    <ConversationLayout>
+      <Chat
+        conversationId={conversation.id}
+        initialMessages={initialMessages}
+        initialModel={conversation.model}
+      />
+    </ConversationLayout>
   );
 }
 

@@ -175,6 +175,7 @@ export function Chat({
       <ScrollArea ref={scrollRootRef} className="min-h-0 flex-1">
         <MessageList
           messages={messages}
+          conversationId={conversationId}
           status={status}
           onRegenerate={isStreaming ? undefined : handleRegenerate}
           onEdit={isStreaming ? undefined : handleEdit}
