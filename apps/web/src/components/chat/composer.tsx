@@ -87,6 +87,10 @@ export interface ComposerProps {
   disabled?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
+  // Valor inicial do textarea (sugestão de prompt clicada, etc). Usado só
+  // na inicialização do state — para atualizar depois, remonte o Composer
+  // via `key` no JSX pai.
+  initialValue?: string;
   // Desabilita Paperclip + drag/drop. Usado na landing (sem conversationId
   // ainda — anexos órfãos seriam confusos).
   disableAttachments?: boolean;
@@ -104,12 +108,13 @@ export function Composer({
   disabled = false,
   placeholder = 'Envie uma mensagem...',
   autoFocus = false,
+  initialValue = '',
   disableAttachments = false,
   disableRag = false,
   disableTools = false,
   className,
 }: ComposerProps) {
-  const [value, setValue] = React.useState('');
+  const [value, setValue] = React.useState(initialValue);
   const [attachments, setAttachments] = React.useState<ComposerAttachment[]>([]);
   const [isDragging, setIsDragging] = React.useState(false);
   // Default `false` no SSR pra evitar hydration mismatch; rehidratamos do
@@ -372,6 +377,7 @@ export function Composer({
 
         <textarea
           ref={textareaRef}
+          data-slot="composer-input"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}

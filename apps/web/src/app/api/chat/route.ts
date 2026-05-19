@@ -16,11 +16,11 @@ import { getModel, systemPrompt } from '@repo/ai';
 import { embedQuery } from '@repo/ai/rag';
 import { getTools } from '@repo/ai/tools';
 import {
-  ArtifactKind,
   MessageRole,
   getLatestArtifact,
   prisma,
   searchSimilarChunks,
+  type ArtifactKind,
   type Prisma,
 } from '@repo/database';
 

@@ -6,6 +6,7 @@ import { auth } from '@/lib/auth';
 import { listConversations } from '@/lib/actions/conversations';
 
 import { AppShellProvider, Sidebar, type SidebarUser } from '@/components/app/sidebar';
+import { KeyboardShortcuts } from '@/components/app/keyboard-shortcuts';
 import { Topbar } from '@/components/app/topbar';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -38,6 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <main className="flex-1 overflow-y-auto">{children}</main>
         </div>
       </div>
+      <KeyboardShortcuts />
     </AppShellProvider>
   );
 }

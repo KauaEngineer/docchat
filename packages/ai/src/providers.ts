@@ -46,8 +46,8 @@ export function isKnownModelId(id: string): id is KnownModelId {
 export function getModel(modelId: string): LanguageModelV1 {
   const provider = PROVIDER_OF[modelId];
   if (!provider) {
-    // JSON.stringify revela whitespace/zero-width chars ("gemini-2.0-flash "
-    // ou "​gemini..."); listar os válidos torna o diff óbvio.
+    // JSON.stringify revela whitespace/zero-width chars no id (ex.: trailing
+    // space ou U+200B no início); listar os válidos torna o diff óbvio.
     const known = Object.keys(PROVIDER_OF).map((k) => `"${k}"`).join(', ');
     throw new Error(
       `Modelo desconhecido: ${JSON.stringify(modelId)}. Conhecidos: ${known}.`,

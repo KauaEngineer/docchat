@@ -165,7 +165,12 @@ function ArtifactPanelInner({
 
   const current =
     versions?.find((v) => v.version === selectedVersion) ?? null;
-  const availableTabs = current ? tabsForKind(current.kind) : [];
+  // Memo evita que availableTabs vire um array novo a cada render — o
+  // useEffect abaixo depende dele e dispararia em loop infinito do contrário.
+  const availableTabs = React.useMemo(
+    () => (current ? tabsForKind(current.kind) : []),
+    [current],
+  );
 
   // Se a tab ativa não pertence ao kind atual (ex.: usuário trocou de versão
   // / artifact), normaliza pro primeiro disponível.

@@ -17,7 +17,12 @@
       "Bash(pnpm --filter @repo/storage typecheck)",
       "Bash(pnpm --filter @repo/database db:generate)",
       "Bash(pnpm *)",
-      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\kauan\\\\documents\\\\chatbot-portfolio\" -Force | Where-Object { -not $_.PSIsContainer } | ForEach-Object { $_.Name })"
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\kauan\\\\documents\\\\chatbot-portfolio\" -Force | Where-Object { -not $_.PSIsContainer } | ForEach-Object { $_.Name })",
+      "Bash(git stash *)",
+      "PowerShell(Get-Content *)",
+      "PowerShell($bytes = [System.IO.File]::ReadAllBytes\\(\"C:\\\\Users\\\\kauan\\\\documents\\\\chatbot-portfolio\\\\packages\\\\ai\\\\src\\\\providers.ts\"\\); $text = [System.Text.Encoding]::UTF8.GetString\\($bytes\\); $lines = $text -split \"`n\"; $line = $lines[49]; \"len=$\\($line.Length\\)\"; for \\($i=0; $i -lt [Math]::Min\\($line.Length, 60\\); $i++\\) { $c = [int]$line[$i]; \"$i`: U+$\\('{0:X4}' -f $c\\) \\($\\([char]$c\\)\\)\" })",
+      "Bash(npx next *)",
+      "Bash(npx eslint *)"
     ]
   }
 }
