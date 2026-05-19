@@ -15,7 +15,8 @@
       "Bash(pnpm --filter web typecheck)",
       "Bash(pnpm --filter @repo/ai typecheck)",
       "Bash(pnpm --filter @repo/storage typecheck)",
-      "Bash(pnpm --filter @repo/database db:generate)"
+      "Bash(pnpm --filter @repo/database db:generate)",
+      "Bash(pnpm *)"
     ]
   }
 }
