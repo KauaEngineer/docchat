@@ -14,6 +14,7 @@ import { z } from 'zod';
 
 import { getModel, systemPrompt } from '@repo/ai';
 import { embedQuery } from '@repo/ai/rag';
+import { getTools } from '@repo/ai/tools';
 import { MessageRole, prisma, searchSimilarChunks, type Prisma } from '@repo/database';
 
 import { auth } from '@/lib/auth';
@@ -55,6 +56,9 @@ const RequestSchema = z.object({
   // Quando true, embeda a última user message + busca chunks similares dos
   // documentos do usuário e injeta no system prompt antes do streamText.
   useRAG: z.boolean().optional(),
+  // Nomes das tools habilitadas para este turno. Subconjunto de
+  // ALL_TOOL_NAMES — nomes desconhecidos são filtrados pelo getTools.
+  tools: z.array(z.string()).optional(),
 });
 
 const idGen = createIdGenerator();
@@ -83,6 +87,7 @@ export async function POST(req: Request): Promise<Response> {
       editFromMessageId,
       attachmentIds,
       useRAG,
+      tools: requestedTools,
     } = parsed.data;
 
     const conversation = await prisma.conversation.findUnique({
@@ -214,10 +219,14 @@ export async function POST(req: Request): Promise<Response> {
       }
     }
 
+    // Tools: filtra o que o cliente pediu contra o registry. Nomes inválidos
+    // são silenciosamente ignorados pelo getTools.
+    const toolset = getTools({ enabled: requestedTools ?? [] });
+
     const baseSystem = systemPrompt({
       userName,
       hasRAG: ragAddendum !== null,
-      hasTools: false,
+      hasTools: toolset !== undefined,
     });
     const finalSystem = ragAddendum
       ? `${baseSystem}\n\n${ragAddendum}`
@@ -243,6 +252,15 @@ export async function POST(req: Request): Promise<Response> {
       messages: convertToCoreMessages(history),
       temperature: 0.7,
       maxTokens: 8000,
+      // Multi-step tool use: o modelo pode chamar tools repetidamente até
+      // 5 passos. v4 SDK usa `maxSteps`; é o equivalente do stopWhen:
+      // stepCountIs(5) que aparece na doc v5.
+      maxSteps: 5,
+      ...(toolset && { tools: toolset }),
+      // Habilita o estado `partial-call` no UI (args streamando token a
+      // token). Sem isso o cliente só vê `call` → `result`, perdendo o
+      // feedback "Preparando ..." enquanto o modelo monta o args JSON.
+      toolCallStreaming: true,
       onFinish: async ({ text, finishReason }) => {
         // O close precisa rodar mesmo se a persistência abaixo der ruim,
         // senão a conexão fica pendurada e o cliente trava no streaming.

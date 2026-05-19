@@ -187,7 +187,9 @@ export function Chat({
             onSubmit={(text, options) => {
               const attachments = options?.attachments;
               const useRAG = options?.useRAG;
+              const enabledTools = options?.enabledTools;
               const hasAtts = attachments && attachments.length > 0;
+              const hasTools = enabledTools && enabledTools.length > 0;
               void append(
                 {
                   role: 'user',
@@ -210,6 +212,7 @@ export function Chat({
                     // as rows de Attachment (criadas órfãs no upload) à nova msg.
                     ...(hasAtts && { attachmentIds: attachments.map((a) => a.id) }),
                     ...(useRAG && { useRAG: true }),
+                    ...(hasTools && { tools: enabledTools }),
                   },
                 },
               );

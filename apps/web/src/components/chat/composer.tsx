@@ -3,21 +3,51 @@
 import * as React from 'react';
 import {
   BookOpenIcon,
+  CalculatorIcon,
+  ClockIcon,
   FileIcon,
+  GlobeIcon,
   ImageIcon,
   Loader2Icon,
   PaperclipIcon,
   SendHorizontalIcon,
   SquareIcon,
+  WrenchIcon,
   XIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@repo/ui/components/button';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@repo/ui/components/dropdown-menu';
 import { Switch } from '@repo/ui/components/switch';
 import { cn } from '@repo/ui/lib/utils';
 
 const USE_RAG_STORAGE_KEY = 'chat:useRAG';
+const ENABLED_TOOLS_STORAGE_KEY = 'chat:enabledTools';
+
+// Lista canônica para o UI. Os `name`s precisam casar com as keys do registry
+// em @repo/ai/tools (calculator/webSearch/currentTime); errar um nome silencia
+// a tool no backend porque o getTools ignora desconhecidos.
+const TOOL_OPTIONS = [
+  { name: 'calculator', label: 'Calculadora', Icon: CalculatorIcon },
+  { name: 'webSearch', label: 'Busca na web', Icon: GlobeIcon },
+  { name: 'currentTime', label: 'Hora atual', Icon: ClockIcon },
+] as const;
+
+type ToolOptionName = (typeof TOOL_OPTIONS)[number]['name'];
+
+const ALL_TOOL_NAMES: readonly ToolOptionName[] = TOOL_OPTIONS.map((t) => t.name);
+
+function isToolName(name: string): name is ToolOptionName {
+  return (ALL_TOOL_NAMES as readonly string[]).includes(name);
+}
 
 const MAX_HEIGHT_PX = 200;
 const CHAR_WARNING_THRESHOLD = 4000;
@@ -46,7 +76,11 @@ interface ComposerAttachment {
 export interface ComposerProps {
   onSubmit: (
     text: string,
-    options?: { attachments?: SubmittedAttachment[]; useRAG?: boolean },
+    options?: {
+      attachments?: SubmittedAttachment[];
+      useRAG?: boolean;
+      enabledTools?: string[];
+    },
   ) => void | Promise<void>;
   onStop?: () => void;
   isStreaming?: boolean;
@@ -58,6 +92,8 @@ export interface ComposerProps {
   disableAttachments?: boolean;
   // Desabilita o toggle de RAG. Usamos na landing (sem conversa, sem turno).
   disableRag?: boolean;
+  // Desabilita o seletor de tools. Usado na landing pela mesma razão.
+  disableTools?: boolean;
   className?: string;
 }
 
@@ -70,6 +106,7 @@ export function Composer({
   autoFocus = false,
   disableAttachments = false,
   disableRag = false,
+  disableTools = false,
   className,
 }: ComposerProps) {
   const [value, setValue] = React.useState('');
@@ -79,6 +116,7 @@ export function Composer({
   // localStorage logo após o mount. Se o usuário enviar antes do effect rodar,
   // perde-se um turno com RAG desligado — aceitável (1 frame de UX).
   const [useRAG, setUseRAG] = React.useState(false);
+  const [enabledTools, setEnabledTools] = React.useState<ToolOptionName[]>([]);
 
   React.useEffect(() => {
     if (disableRag) return;
@@ -90,6 +128,24 @@ export function Composer({
     }
   }, [disableRag]);
 
+  React.useEffect(() => {
+    if (disableTools) return;
+    try {
+      const raw = window.localStorage.getItem(ENABLED_TOOLS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      // Sanitiza: aceita só nomes do registry atual. Itens antigos/inválidos
+      // (ex.: tool removida em uma versão futura) são silenciosamente descartados.
+      if (Array.isArray(parsed)) {
+        setEnabledTools(parsed.filter((v): v is ToolOptionName =>
+          typeof v === 'string' && isToolName(v),
+        ));
+      }
+    } catch {
+      // JSON corrompido ou storage bloqueado — fica com default vazio.
+    }
+  }, [disableTools]);
+
   function toggleRag(next: boolean): void {
     setUseRAG(next);
     try {
@@ -97,6 +153,23 @@ export function Composer({
     } catch {
       // Sem persistência se o storage estiver bloqueado; estado local segue.
     }
+  }
+
+  function toggleTool(name: ToolOptionName, next: boolean): void {
+    setEnabledTools((prev) => {
+      const set = new Set(prev);
+      if (next) set.add(name);
+      else set.delete(name);
+      // Preserva a ordem canônica do TOOL_OPTIONS pra ficar estável
+      // independente da ordem de cliques.
+      const arr = ALL_TOOL_NAMES.filter((n) => set.has(n));
+      try {
+        window.localStorage.setItem(ENABLED_TOOLS_STORAGE_KEY, JSON.stringify(arr));
+      } catch {
+        // sem persistência
+      }
+      return arr;
+    });
   }
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -218,6 +291,8 @@ export function Composer({
     await onSubmit(toSend, {
       attachments: ready.length > 0 ? ready : undefined,
       useRAG: disableRag ? undefined : useRAG,
+      enabledTools:
+        disableTools || enabledTools.length === 0 ? undefined : [...enabledTools],
     });
   }
 
@@ -356,6 +431,48 @@ export function Composer({
                   aria-label="Usar meus documentos"
                 />
               </label>
+            )}
+
+            {disableTools ? null : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'text-muted-foreground hover:text-foreground h-7 gap-1.5 px-2 text-xs',
+                      enabledTools.length > 0 && 'text-foreground',
+                    )}
+                    aria-label="Ferramentas"
+                  >
+                    <WrenchIcon className="size-3.5" />
+                    Ferramentas
+                    {enabledTools.length > 0 ? (
+                      <span className="bg-primary text-primary-foreground ml-0.5 rounded-full px-1.5 text-[10px] leading-4 tabular-nums">
+                        {enabledTools.length}
+                      </span>
+                    ) : null}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuLabel>Ferramentas</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {TOOL_OPTIONS.map(({ name, label, Icon }) => (
+                    <DropdownMenuCheckboxItem
+                      key={name}
+                      checked={enabledTools.includes(name)}
+                      // Radix dispara onSelect ao clicar — preserva o menu
+                      // aberto pra usuário marcar várias sem reabrir.
+                      onSelect={(e) => e.preventDefault()}
+                      onCheckedChange={(checked) => toggleTool(name, checked)}
+                    >
+                      <Icon className="size-3.5" />
+                      {label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
 

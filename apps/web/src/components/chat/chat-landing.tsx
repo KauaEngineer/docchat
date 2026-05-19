@@ -53,9 +53,10 @@ export function ChatLanding({ userName }: { userName: string | null }) {
           // Sem conversa ainda — anexos órfãos seriam confusos. Fluxo: cria
           // a conversa primeiro, anexa nas próximas mensagens.
           disableAttachments
-          // Mesma razão pra RAG: o toggle aparece a partir da segunda tela,
-          // onde o usuário já tem contexto de conversa.
+          // Mesma razão pra RAG/tools: os controles aparecem a partir da
+          // segunda tela, onde o usuário já tem contexto de conversa.
           disableRag
+          disableTools
           placeholder="Pergunte qualquer coisa..."
         />
       </div>

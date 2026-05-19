@@ -15,9 +15,11 @@ import {
 import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
-import type { Message } from 'ai';
+import type { Message, ToolInvocation } from 'ai';
 
 import { Button } from '@repo/ui/components/button';
+
+import { ToolInvocationCard } from './tool-invocation';
 
 export interface MessageBubbleProps {
   message: Message;
@@ -243,8 +245,12 @@ function AssistantBubble({
   onRegenerate?: () => void;
 }) {
   const text = message.content;
-  const showActions = text.length > 0;
   const ragSources = extractRagSources(message.annotations);
+  // useChat hidrata `parts` automaticamente — texto, tool-invocations, etc.
+  // Pra mensagens carregadas do banco (initialMessages com só `content`),
+  // o SDK preenche parts com um único TextUIPart, então não há regressão.
+  const renderables = buildAssistantRenderables(message);
+  const showActions = text.length > 0;
 
   return (
     <div className="group flex w-full gap-3 py-2">
@@ -253,7 +259,17 @@ function AssistantBubble({
       </div>
 
       <div className="min-w-0 flex-1">
-        <Markdown content={text} />
+        {renderables.map((item, i) => {
+          if (item.kind === 'text') {
+            return <Markdown key={`t-${i}`} content={item.text} />;
+          }
+          return (
+            <ToolInvocationCard
+              key={`tool-${item.invocation.toolCallId}`}
+              invocation={item.invocation}
+            />
+          );
+        })}
 
         {ragSources.length > 0 ? <RagSourcesPanel sources={ragSources} /> : null}
 
@@ -277,6 +293,31 @@ function AssistantBubble({
       </div>
     </div>
   );
+}
+
+type AssistantRenderable =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool'; invocation: ToolInvocation };
+
+function buildAssistantRenderables(message: Message): AssistantRenderable[] {
+  const parts = message.parts;
+  if (Array.isArray(parts) && parts.length > 0) {
+    const out: AssistantRenderable[] = [];
+    for (const p of parts) {
+      if (p.type === 'text' && p.text.length > 0) {
+        out.push({ kind: 'text', text: p.text });
+      } else if (p.type === 'tool-invocation') {
+        out.push({ kind: 'tool', invocation: p.toolInvocation });
+      }
+      // Outros tipos (reasoning, source, file, step-start) são ignorados
+      // — o portfólio não exibe nada além de texto e tool calls.
+    }
+    if (out.length > 0) return out;
+  }
+  // Fallback: mensagens muito antigas (sem parts) ou content fora do stream.
+  return message.content.length > 0
+    ? [{ kind: 'text', text: message.content }]
+    : [];
 }
 
 // -----------------------------------------------------------------------------
