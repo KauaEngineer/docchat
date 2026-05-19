@@ -1,24 +1,37 @@
 import type { Tool } from 'ai';
 
+import { createArtifact, updateArtifact } from './artifact';
 import { calculator } from './calculator';
 import { currentTime } from './current-time';
 import { webSearch } from './web-search';
 
-// Registry estático — adicionar uma tool aqui automaticamente a expõe pro
-// getTools(). Os nomes são as keys que vão pro objeto que o streamText recebe
-// em `tools: {...}`; o modelo enxerga exatamente essa string.
+// -----------------------------------------------------------------------------
+// Registry
+// -----------------------------------------------------------------------------
+// Duas categorias:
 //
-// Tipagem propositalmente larga (Record<string, Tool>): cada tool tem seu
-// próprio schema/execute, e perdemos pouco no consumer (que só passa o objeto
-// adiante pro streamText). Manter o tipo estreito aqui forçaria genéricos
-// complicados sem ganho real.
+// • TOGGLEABLE: o usuário liga/desliga no Composer (dropdown "Ferramentas").
+//   O cliente passa um array `enabled` com os nomes — o que não estiver na
+//   lista some pro modelo.
+//
+// • ALWAYS_ON: sempre presentes, fora da lista do dropdown. Artefatos entram
+//   aqui porque são parte do contrato base do assistente (sem eles a UI do
+//   painel lateral fica inerte) e habilitá-los manualmente seria mais um
+//   passo de UX sem ganho.
+//
 // Tipo explícito (em vez de `satisfies`) porque o inferido a partir do literal
 // vazaria tipos internos das tools (ex.: TavilyResult) que não exportamos,
 // disparando TS4023 ao publicar o módulo via declaration files.
-const REGISTRY: Record<string, Tool> = {
+
+const TOGGLEABLE_REGISTRY: Record<string, Tool> = {
   calculator,
   currentTime,
   webSearch,
+};
+
+const ALWAYS_ON_REGISTRY: Record<string, Tool> = {
+  createArtifact,
+  updateArtifact,
 };
 
 export type ToolName = 'calculator' | 'currentTime' | 'webSearch';
@@ -26,24 +39,24 @@ export type ToolName = 'calculator' | 'currentTime' | 'webSearch';
 export const ALL_TOOL_NAMES: ToolName[] = ['calculator', 'currentTime', 'webSearch'];
 
 /**
- * Retorna um subconjunto do registry pra passar direto em `streamText({tools})`.
+ * Retorna o objeto pra passar direto em `streamText({tools})`.
  *
- * Nomes desconhecidos são ignorados silenciosamente — o caller normalmente
- * lê de input do usuário ou de config, e errar um nome não deve quebrar
- * todo o turno. Quando a lista está vazia, retorna `undefined` em vez de
- * `{}` pra deixar o streamText decidir o default (não habilitar tool use).
+ * - Sempre inclui as tools ALWAYS_ON (artefatos).
+ * - Adiciona as TOGGLEABLE cujo nome estiver em `enabled`.
+ * - Nomes desconhecidos em `enabled` são silenciosamente ignorados.
+ *
+ * Diferente da versão anterior, NUNCA retorna `undefined` — artefatos
+ * existem mesmo sem nenhum toggleable habilitado.
  */
 export function getTools(opts: {
   enabled: readonly string[];
-}): Record<string, Tool> | undefined {
-  if (opts.enabled.length === 0) return undefined;
-
-  const out: Record<string, Tool> = {};
+}): Record<string, Tool> {
+  const out: Record<string, Tool> = { ...ALWAYS_ON_REGISTRY };
   for (const name of opts.enabled) {
-    const t = REGISTRY[name];
+    const t = TOGGLEABLE_REGISTRY[name];
     if (t) out[name] = t;
   }
-  return Object.keys(out).length > 0 ? out : undefined;
+  return out;
 }
 
-export { calculator, currentTime, webSearch };
+export { calculator, createArtifact, currentTime, updateArtifact, webSearch };

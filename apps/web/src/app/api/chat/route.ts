@@ -220,13 +220,17 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     // Tools: filtra o que o cliente pediu contra o registry. Nomes inválidos
-    // são silenciosamente ignorados pelo getTools.
+    // são silenciosamente ignorados pelo getTools, que SEMPRE devolve pelo
+    // menos as ALWAYS_ON (artefatos) mesmo quando `enabled` está vazio.
     const toolset = getTools({ enabled: requestedTools ?? [] });
 
+    // `hasTools` controla a seção genérica "Tools" do system prompt; ela só
+    // faz sentido quando o usuário ligou alguma toggleable (calc/search/time).
+    // Artefatos têm sua própria seção dedicada, sempre presente.
     const baseSystem = systemPrompt({
       userName,
       hasRAG: ragAddendum !== null,
-      hasTools: toolset !== undefined,
+      hasTools: (requestedTools?.length ?? 0) > 0,
     });
     const finalSystem = ragAddendum
       ? `${baseSystem}\n\n${ragAddendum}`
@@ -256,7 +260,7 @@ export async function POST(req: Request): Promise<Response> {
       // 5 passos. v4 SDK usa `maxSteps`; é o equivalente do stopWhen:
       // stepCountIs(5) que aparece na doc v5.
       maxSteps: 5,
-      ...(toolset && { tools: toolset }),
+      tools: toolset,
       // Habilita o estado `partial-call` no UI (args streamando token a
       // token). Sem isso o cliente só vê `call` → `result`, perdendo o
       // feedback "Preparando ..." enquanto o modelo monta o args JSON.

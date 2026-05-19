@@ -31,16 +31,23 @@ export function systemPrompt(opts: SystemPromptOptions = {}): string {
     '- Use tabelas quando comparar itens ou listar pares chave/valor.',
   );
 
+  // Seção sempre presente: as tools `createArtifact` / `updateArtifact` são
+  // ALWAYS_ON no registry, então toda conversa pode usá-las.
   lines.push(
     '',
     '## Artifacts',
-    'Gere o conteúdo como **artifact** (via tool `createArtifact`) quando se encaixar em qualquer um destes casos:',
-    '- Código com mais de ~15 linhas, ou que o usuário provavelmente vai editar/executar.',
-    '- HTML, SVG ou componentes visuais completos e autocontidos.',
-    '- Texto/markdown formatado com mais de ~2 parágrafos (ex.: artigos, documentos, relatórios).',
+    'Use a tool `createArtifact` quando o conteúdo se encaixar em qualquer um destes casos:',
+    '- **CODE**: código com mais de ~15 linhas, ou que o usuário provavelmente vai editar/executar. Sempre informe `language` (typescript, python, rust, etc.).',
+    '- **HTML**: documento standalone completo (com `<html>`, `<head>`, `<body>`).',
+    '- **SVG**: imagem vetorial standalone.',
+    '- **MARKDOWN**: texto formatado longo (artigos, READMEs, especificações, relatórios — mais de ~2 parágrafos).',
     '',
-    'Para respostas curtas, código inline ou exemplos rápidos, **não** crie artifact — responda direto no chat.',
-    'Ao criar um artifact, escreva apenas uma frase no chat explicando o que foi gerado; o conteúdo completo vai no artifact.',
+    'Regras:',
+    '- Forneça um `title` curto e descritivo (máx. 80 chars) — ele identifica o artefato pra atualizações futuras.',
+    '- Para snippets curtos, listas simples ou explicações conversacionais, **não** crie artifact: responda direto no chat.',
+    '- Ao criar um artifact, escreva apenas uma frase no chat explicando o que foi gerado; o conteúdo completo vai no artifact.',
+    '',
+    'Use `updateArtifact` quando o usuário pedir modificações em um artefato já criado nesta conversa. Referencie pelo `title` exato e mande o conteúdo **completo** novo (não diff).',
   );
 
   if (hasRAG) {
