@@ -2,7 +2,7 @@ import * as React from 'react';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 
-import type { Message } from 'ai';
+import type { JSONValue, Message } from 'ai';
 
 import { MessageRole, prisma } from '@repo/database';
 
@@ -38,6 +38,7 @@ export default async function ChatConversationPage({
     .filter((m) => m.role !== MessageRole.TOOL)
     .map((m) => {
       const attachments = filePartsToAttachments(m.content);
+      const ragSources = ragSourcesFromContent(m.content);
       return {
         id: m.id,
         role: dbRoleToUIRole(m.role),
@@ -45,6 +46,15 @@ export default async function ChatConversationPage({
         // Reidrata a UI com os anexos enviados originalmente. Sem isso, F5
         // perderia thumbnails e o usuário acharia que o arquivo sumiu.
         ...(attachments.length > 0 && { experimental_attachments: attachments }),
+        // Annotations refletem o que o stream também emite — manter o mesmo
+        // canal nos dois caminhos simplifica o consumer no MessageBubble.
+        // Cast pra JSONValue[]: o shape é JSON-puro mas PersistedRagSource
+        // não declara index signature.
+        ...(ragSources.length > 0 && {
+          annotations: [
+            { type: 'rag-context', sources: ragSources },
+          ] as unknown as JSONValue[],
+        }),
       };
     });
 
@@ -89,6 +99,37 @@ function partsToText(content: unknown): string {
     }
   }
   return out.join('\n');
+}
+
+interface PersistedRagSource {
+  documentId: string;
+  filename: string;
+  similarity: number;
+  content: string;
+}
+
+function ragSourcesFromContent(content: unknown): PersistedRagSource[] {
+  if (!Array.isArray(content)) return [];
+  for (const p of content) {
+    if (
+      p !== null &&
+      typeof p === 'object' &&
+      'type' in p &&
+      (p as { type: unknown }).type === 'rag-context' &&
+      'sources' in p &&
+      Array.isArray((p as { sources: unknown }).sources)
+    ) {
+      const raw = (p as { sources: unknown[] }).sources;
+      return raw.filter(
+        (s): s is PersistedRagSource =>
+          s !== null &&
+          typeof s === 'object' &&
+          typeof (s as PersistedRagSource).filename === 'string' &&
+          typeof (s as PersistedRagSource).content === 'string',
+      );
+    }
+  }
+  return [];
 }
 
 function filePartsToAttachments(

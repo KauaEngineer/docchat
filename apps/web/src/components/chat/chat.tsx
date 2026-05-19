@@ -184,7 +184,9 @@ export function Chat({
       <div className="border-t px-4 pt-3 pb-4">
         <div className="mx-auto w-full max-w-3xl">
           <Composer
-            onSubmit={(text, attachments) => {
+            onSubmit={(text, options) => {
+              const attachments = options?.attachments;
+              const useRAG = options?.useRAG;
               const hasAtts = attachments && attachments.length > 0;
               void append(
                 {
@@ -207,6 +209,7 @@ export function Chat({
                     // attachmentIds vai pro chat route fazer o updateMany linkando
                     // as rows de Attachment (criadas órfãs no upload) à nova msg.
                     ...(hasAtts && { attachmentIds: attachments.map((a) => a.id) }),
+                    ...(useRAG && { useRAG: true }),
                   },
                 },
               );

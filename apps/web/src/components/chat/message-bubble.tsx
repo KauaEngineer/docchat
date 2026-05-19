@@ -4,8 +4,10 @@ import * as React from 'react';
 import {
   BotIcon,
   CheckIcon,
+  ChevronDownIcon,
   CopyIcon,
   FileIcon,
+  FileTextIcon,
   PencilIcon,
   RefreshCwIcon,
   XIcon,
@@ -242,6 +244,7 @@ function AssistantBubble({
 }) {
   const text = message.content;
   const showActions = text.length > 0;
+  const ragSources = extractRagSources(message.annotations);
 
   return (
     <div className="group flex w-full gap-3 py-2">
@@ -251,6 +254,8 @@ function AssistantBubble({
 
       <div className="min-w-0 flex-1">
         <Markdown content={text} />
+
+        {ragSources.length > 0 ? <RagSourcesPanel sources={ragSources} /> : null}
 
         {showActions ? (
           <div className="mt-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -270,6 +275,95 @@ function AssistantBubble({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// RAG sources — collapsible com chunks recuperados.
+// -----------------------------------------------------------------------------
+
+interface RagSource {
+  documentId: string;
+  filename: string;
+  similarity: number;
+  content: string;
+}
+
+function extractRagSources(annotations: Message['annotations']): RagSource[] {
+  if (!Array.isArray(annotations)) return [];
+  // Iteramos: o streamData pode ter empilhado outras annotations no futuro;
+  // ficamos só com a do tipo 'rag-context'.
+  for (const a of annotations) {
+    if (
+      a !== null &&
+      typeof a === 'object' &&
+      !Array.isArray(a) &&
+      (a as { type?: unknown }).type === 'rag-context' &&
+      Array.isArray((a as { sources?: unknown }).sources)
+    ) {
+      const raw = (a as { sources: unknown[] }).sources;
+      return raw.filter(
+        (s): s is RagSource =>
+          s !== null &&
+          typeof s === 'object' &&
+          typeof (s as RagSource).filename === 'string' &&
+          typeof (s as RagSource).content === 'string',
+      );
+    }
+  }
+  return [];
+}
+
+function RagSourcesPanel({ sources }: { sources: RagSource[] }) {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <div className="mt-3 rounded-lg border bg-muted/30 text-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="hover:bg-muted/60 flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-colors"
+      >
+        <span className="flex items-center gap-2 text-xs font-medium">
+          <FileTextIcon className="size-3.5" />
+          Fontes ({sources.length})
+        </span>
+        <ChevronDownIcon
+          className={`text-muted-foreground size-4 transition-transform ${
+            open ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+
+      {open ? (
+        <div className="border-t px-3 py-2">
+          <ul className="flex flex-col gap-2">
+            {sources.map((s, i) => (
+              <li
+                key={`${s.documentId}-${i}`}
+                className="bg-background rounded-md border p-2.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
+                    <FileTextIcon className="text-muted-foreground size-3.5 shrink-0" />
+                    <span className="truncate" title={s.filename}>
+                      {s.filename}
+                    </span>
+                  </span>
+                  <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+                    {(s.similarity * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <p className="text-muted-foreground mt-1.5 line-clamp-4 text-xs leading-relaxed whitespace-pre-wrap">
+                  {s.content}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

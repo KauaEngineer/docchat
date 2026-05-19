@@ -2,16 +2,19 @@ import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 
 import {
+  StreamData,
   convertToCoreMessages,
   createIdGenerator,
   generateText,
   streamText,
+  type JSONValue,
   type Message,
 } from 'ai';
 import { z } from 'zod';
 
 import { getModel, systemPrompt } from '@repo/ai';
-import { MessageRole, prisma, type Prisma } from '@repo/database';
+import { embedQuery } from '@repo/ai/rag';
+import { MessageRole, prisma, searchSimilarChunks, type Prisma } from '@repo/database';
 
 import { auth } from '@/lib/auth';
 
@@ -49,6 +52,9 @@ const RequestSchema = z.object({
   // Ids das Attachment rows criadas no upload (POST /api/upload). Usado pra
   // linkar messageId após persistir a user message.
   attachmentIds: z.array(z.string()).optional(),
+  // Quando true, embeda a última user message + busca chunks similares dos
+  // documentos do usuário e injeta no system prompt antes do streamText.
+  useRAG: z.boolean().optional(),
 });
 
 const idGen = createIdGenerator();
@@ -70,8 +76,14 @@ export async function POST(req: Request): Promise<Response> {
       return jsonError(400, 'Body inválido.', detail);
     }
 
-    const { messages, conversationId, model, editFromMessageId, attachmentIds } =
-      parsed.data;
+    const {
+      messages,
+      conversationId,
+      model,
+      editFromMessageId,
+      attachmentIds,
+      useRAG,
+    } = parsed.data;
 
     const conversation = await prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -186,13 +198,54 @@ export async function POST(req: Request): Promise<Response> {
 
     const userName = session.user.name ?? undefined;
 
+    // ----- RAG (opcional) ---------------------------------------------------
+    // Se o usuário ligou o toggle, embeda a última mensagem dele e busca
+    // chunks similares dos próprios documentos. Falhas aqui são silenciosas:
+    // logamos e seguimos sem contexto — perder RAG é melhor que perder o turno.
+    let ragAddendum: string | null = null;
+    let ragSources: RagSource[] = [];
+    if (useRAG) {
+      try {
+        const result = await runRAG(lastReqUser.content, session.user.id);
+        ragAddendum = result.systemAddendum;
+        ragSources = result.sources;
+      } catch (err) {
+        console.error('[chat] RAG falhou (seguindo sem contexto):', err);
+      }
+    }
+
+    const baseSystem = systemPrompt({
+      userName,
+      hasRAG: ragAddendum !== null,
+      hasTools: false,
+    });
+    const finalSystem = ragAddendum
+      ? `${baseSystem}\n\n${ragAddendum}`
+      : baseSystem;
+
+    // StreamData injeta as fontes como annotation da assistant message que
+    // está sendo gerada. O cliente lê em `message.annotations` e mostra o
+    // bloco "Fontes" sem esperar reload da página.
+    const streamData =
+      ragSources.length > 0 ? new StreamData() : null;
+    if (streamData) {
+      // RagSource[] não tem index signature → cast pra JSONValue. O shape
+      // continua sendo JSON-puro em runtime.
+      streamData.appendMessageAnnotation({
+        type: 'rag-context',
+        sources: ragSources as unknown as JSONValue,
+      });
+    }
+
     const result = streamText({
       model: getModel(model),
-      system: systemPrompt({ userName, hasRAG: false, hasTools: false }),
+      system: finalSystem,
       messages: convertToCoreMessages(history),
       temperature: 0.7,
       maxTokens: 8000,
       onFinish: async ({ text, finishReason }) => {
+        // O close precisa rodar mesmo se a persistência abaixo der ruim,
+        // senão a conexão fica pendurada e o cliente trava no streaming.
         try {
           // Se a resposta veio vazia (erro antes do primeiro chunk), não
           // grava — senão poluímos o histórico com mensagens vazias que
@@ -204,7 +257,7 @@ export async function POST(req: Request): Promise<Response> {
               id: idGen(),
               conversationId,
               role: MessageRole.ASSISTANT,
-              content: textToParts(text) as unknown as Prisma.InputJsonValue,
+              content: assistantParts(text, ragSources) as unknown as Prisma.InputJsonValue,
             },
           });
 
@@ -232,11 +285,16 @@ export async function POST(req: Request): Promise<Response> {
           revalidatePath('/chat', 'layout');
         } catch (err) {
           console.error('[chat] onFinish persist error:', err);
+        } finally {
+          // close() é idempotente o suficiente; sem isso o StreamData mantém
+          // o canal aberto após o stream encerrar.
+          streamData?.close();
         }
       },
     });
 
     return result.toDataStreamResponse({
+      ...(streamData ? { data: streamData } : {}),
       getErrorMessage: (error) => {
         logStreamError('toDataStreamResponse.getErrorMessage', error);
         // Em dev devolve a mensagem real pro toast/console do cliente —
@@ -323,11 +381,20 @@ function dbRoleToUIRole(role: MessageRole): 'user' | 'assistant' | 'system' {
 }
 
 // Convenção do projeto: persistimos message.content como array de parts JSON
-// com type 'text' | 'file'. Mantém compatibilidade com mensagens antigas
-// (puras de texto) ao mesmo tempo que carrega anexos de imagem/PDF/etc.
+// com type 'text' | 'file' | 'rag-context'. Mantém compatibilidade com
+// mensagens antigas (puras de texto) ao mesmo tempo que carrega anexos
+// e o contexto recuperado pra exibição "Fontes" na UI.
+export interface RagSource {
+  documentId: string;
+  filename: string;
+  similarity: number;
+  content: string;
+}
+
 type StoredPart =
   | { type: 'text'; text: string }
-  | { type: 'file'; url: string; mediaType: string };
+  | { type: 'file'; url: string; mediaType: string }
+  | { type: 'rag-context'; sources: RagSource[] };
 
 function buildUserContentParts(
   text: string,
@@ -352,8 +419,50 @@ function buildUserContentParts(
   return parts;
 }
 
-function textToParts(text: string): Array<{ type: 'text'; text: string }> {
-  return [{ type: 'text', text }];
+function assistantParts(text: string, sources: RagSource[]): StoredPart[] {
+  const parts: StoredPart[] = [{ type: 'text', text }];
+  if (sources.length > 0) {
+    parts.push({ type: 'rag-context', sources });
+  }
+  return parts;
+}
+
+// ----- RAG --------------------------------------------------------------------
+
+async function runRAG(
+  query: string,
+  userId: string,
+): Promise<{ systemAddendum: string | null; sources: RagSource[] }> {
+  const trimmed = query.trim();
+  if (trimmed.length === 0) return { systemAddendum: null, sources: [] };
+
+  const embedding = await embedQuery(trimmed);
+  const chunks = await searchSimilarChunks(embedding, userId, 5, 0.7);
+  if (chunks.length === 0) return { systemAddendum: null, sources: [] };
+
+  const sources: RagSource[] = chunks.map((c) => ({
+    documentId: c.documentId,
+    filename: c.filename,
+    // Trunca o conteúdo persistido pra evitar inflar a row da mensagem
+    // (cada chunk tem ~1KB; 5 chunks = 5KB, ok pra Json column).
+    content: c.content,
+    similarity: Number(c.similarity.toFixed(4)),
+  }));
+
+  const blocks = sources
+    .map(
+      (s) =>
+        `[Documento: ${s.filename}, similaridade: ${s.similarity.toFixed(2)}]\n${s.content}`,
+    )
+    .join('\n---\n');
+
+  const systemAddendum =
+    `Contexto recuperado dos documentos do usuário:\n---\n${blocks}\n---\n\n` +
+    `Use este contexto quando relevante. Cite o nome do documento ao referenciar.\n` +
+    `Se o contexto não responder à pergunta, diga que não encontrou informação nos documentos ` +
+    `e responda com seu conhecimento geral.`;
+
+  return { systemAddendum, sources };
 }
 
 function filePartsToAttachments(content: unknown): ReqAttachment[] {

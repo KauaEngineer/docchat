@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import {
+  BookOpenIcon,
   FileIcon,
   ImageIcon,
   Loader2Icon,
@@ -13,7 +14,10 @@ import {
 import { toast } from 'sonner';
 
 import { Button } from '@repo/ui/components/button';
+import { Switch } from '@repo/ui/components/switch';
 import { cn } from '@repo/ui/lib/utils';
+
+const USE_RAG_STORAGE_KEY = 'chat:useRAG';
 
 const MAX_HEIGHT_PX = 200;
 const CHAR_WARNING_THRESHOLD = 4000;
@@ -40,7 +44,10 @@ interface ComposerAttachment {
 }
 
 export interface ComposerProps {
-  onSubmit: (text: string, attachments?: SubmittedAttachment[]) => void | Promise<void>;
+  onSubmit: (
+    text: string,
+    options?: { attachments?: SubmittedAttachment[]; useRAG?: boolean },
+  ) => void | Promise<void>;
   onStop?: () => void;
   isStreaming?: boolean;
   disabled?: boolean;
@@ -49,6 +56,8 @@ export interface ComposerProps {
   // Desabilita Paperclip + drag/drop. Usado na landing (sem conversationId
   // ainda — anexos órfãos seriam confusos).
   disableAttachments?: boolean;
+  // Desabilita o toggle de RAG. Usamos na landing (sem conversa, sem turno).
+  disableRag?: boolean;
   className?: string;
 }
 
@@ -60,11 +69,35 @@ export function Composer({
   placeholder = 'Envie uma mensagem...',
   autoFocus = false,
   disableAttachments = false,
+  disableRag = false,
   className,
 }: ComposerProps) {
   const [value, setValue] = React.useState('');
   const [attachments, setAttachments] = React.useState<ComposerAttachment[]>([]);
   const [isDragging, setIsDragging] = React.useState(false);
+  // Default `false` no SSR pra evitar hydration mismatch; rehidratamos do
+  // localStorage logo após o mount. Se o usuário enviar antes do effect rodar,
+  // perde-se um turno com RAG desligado — aceitável (1 frame de UX).
+  const [useRAG, setUseRAG] = React.useState(false);
+
+  React.useEffect(() => {
+    if (disableRag) return;
+    try {
+      const stored = window.localStorage.getItem(USE_RAG_STORAGE_KEY);
+      if (stored === 'true') setUseRAG(true);
+    } catch {
+      // localStorage indisponível (modo privado / SSR-only); segue com default.
+    }
+  }, [disableRag]);
+
+  function toggleRag(next: boolean): void {
+    setUseRAG(next);
+    try {
+      window.localStorage.setItem(USE_RAG_STORAGE_KEY, next ? 'true' : 'false');
+    } catch {
+      // Sem persistência se o storage estiver bloqueado; estado local segue.
+    }
+  }
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -182,7 +215,10 @@ export function Composer({
     const toSend = trimmed;
     setValue('');
     setAttachments([]);
-    await onSubmit(toSend, ready.length > 0 ? ready : undefined);
+    await onSubmit(toSend, {
+      attachments: ready.length > 0 ? ready : undefined,
+      useRAG: disableRag ? undefined : useRAG,
+    });
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
@@ -273,37 +309,55 @@ export function Composer({
         />
 
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
-          {disableAttachments ? (
-            <div />
-          ) : (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept={ACCEPT_ATTR}
-                hidden
-                onChange={(e) => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    void handleFiles(e.target.files);
-                  }
-                  // Reset pra permitir re-selecionar o mesmo arquivo.
-                  e.target.value = '';
-                }}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => fileInputRef.current?.click()}
-                title="Anexar arquivos"
-                aria-label="Anexar arquivos"
-                className="size-8"
+          <div className="flex items-center gap-1">
+            {disableAttachments ? null : (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept={ACCEPT_ATTR}
+                  hidden
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      void handleFiles(e.target.files);
+                    }
+                    // Reset pra permitir re-selecionar o mesmo arquivo.
+                    e.target.value = '';
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Anexar arquivos"
+                  aria-label="Anexar arquivos"
+                  className="size-8"
+                >
+                  <PaperclipIcon className="size-4" />
+                </Button>
+              </>
+            )}
+
+            {disableRag ? null : (
+              <label
+                className={cn(
+                  'text-muted-foreground hover:text-foreground ml-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors select-none',
+                  useRAG && 'text-foreground',
+                )}
+                title="Usar conteúdo dos seus documentos como contexto"
               >
-                <PaperclipIcon className="size-4" />
-              </Button>
-            </>
-          )}
+                <BookOpenIcon className="size-3.5" />
+                <span>Usar meus documentos</span>
+                <Switch
+                  checked={useRAG}
+                  onCheckedChange={toggleRag}
+                  aria-label="Usar meus documentos"
+                />
+              </label>
+            )}
+          </div>
 
           <div className="flex items-center gap-2">
             {value.length > CHAR_WARNING_THRESHOLD ? (

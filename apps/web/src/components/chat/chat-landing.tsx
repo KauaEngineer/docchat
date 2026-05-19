@@ -46,13 +46,16 @@ export function ChatLanding({ userName }: { userName: string | null }) {
         </h1>
 
         <Composer
-          onSubmit={handleSubmit}
+          onSubmit={(text) => handleSubmit(text)}
           disabled={creating}
           isStreaming={false}
           autoFocus
           // Sem conversa ainda — anexos órfãos seriam confusos. Fluxo: cria
           // a conversa primeiro, anexa nas próximas mensagens.
           disableAttachments
+          // Mesma razão pra RAG: o toggle aparece a partir da segunda tela,
+          // onde o usuário já tem contexto de conversa.
+          disableRag
           placeholder="Pergunte qualquer coisa..."
         />
       </div>
