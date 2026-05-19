@@ -16,7 +16,8 @@
       "Bash(pnpm --filter @repo/ai typecheck)",
       "Bash(pnpm --filter @repo/storage typecheck)",
       "Bash(pnpm --filter @repo/database db:generate)",
-      "Bash(pnpm *)"
+      "Bash(pnpm *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\kauan\\\\documents\\\\chatbot-portfolio\" -Force | Where-Object { -not $_.PSIsContainer } | ForEach-Object { $_.Name })"
     ]
   }
 }
