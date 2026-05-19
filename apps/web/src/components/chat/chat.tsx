@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { ScrollArea } from '@repo/ui/components/scroll-area';
 
 import { useAppShell } from '@/components/app/sidebar';
+import { useArtifactStreaming } from '@/hooks/use-artifact-streaming';
 
 import { Composer } from './composer';
 import { MessageList } from './message-list';
@@ -63,6 +64,10 @@ export function Chat({
       toast.error(error.message || 'Erro ao gerar resposta.');
     }
   }, [error]);
+
+  // Detecta createArtifact em curso e abre o painel automaticamente.
+  // Side-effects (setStreaming/setOpen) ficam dentro do hook.
+  useArtifactStreaming({ messages, conversationId });
 
   // -- Pending message (vem da landing page via sessionStorage) ---------------
   const sentPendingRef = React.useRef(false);
