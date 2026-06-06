@@ -14,7 +14,7 @@ import { Button } from '@repo/ui/components/button';
 
 import { auth } from '@/lib/auth';
 
-const GITHUB_URL = 'https://github.com/kauan-zacarias/chatbot-portfolio';
+const GITHUB_URL = 'https://github.com/KauaEngineer/docchat';
 
 export default async function HomePage() {
   // Usuário logado pula direto pro app — landing é para visitantes anônimos.
