@@ -6,6 +6,10 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
+  // "native" = motor do SO local (Windows/Mac em dev).
+  // "rhel-openssl-3.0.x" = motor do Linux que a Vercel usa em produção.
+  // Sem isso, o Query Engine não é encontrado em runtime na Vercel (erro 500).
+  binaryTargets   = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
