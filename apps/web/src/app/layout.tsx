@@ -5,7 +5,7 @@ import { GeistMono } from 'geist/font/mono';
 import { Providers } from './providers';
 import './globals.css';
 
-const APP_NAME = 'Chatbot Portfolio';
+const APP_NAME = 'DocChat';
 const APP_DESCRIPTION =
   'Chatbot multi-LLM com RAG sobre seus documentos e artefatos visuais. Construído com Next.js 15, React 19 e Vercel AI SDK.';
 

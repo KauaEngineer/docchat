@@ -131,7 +131,7 @@ function SidebarInner({
         <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
           <SparklesIcon className="size-4" />
         </div>
-        <span className="truncate text-sm font-semibold">Chatbot Portfolio</span>
+        <span className="truncate text-sm font-semibold">DocChat</span>
       </div>
 
       <div className="p-3">
