@@ -1,6 +1,20 @@
-# Chatbot Portfolio
+# DocChat
 
-Monorepo do portfólio com chatbot integrado. Construído com **Turborepo + pnpm**, **Next.js 15 (App Router)**, **React 19**, **Tailwind v4**, **Prisma**, **Better Auth** e **Vercel AI SDK**.
+Chatbot multi-LLM com RAG nos seus documentos: suba PDFs e markdown e converse sobre eles com tool use, streaming e artefatos versionados editáveis. Construído com **Turborepo + pnpm**, **Next.js 15 (App Router)**, **React 19**, **Tailwind v4**, **Prisma**, **Better Auth** e **Vercel AI SDK**.
+
+---
+
+## Demo ao vivo
+
+🔗 **[chatbot-portfolio-web.vercel.app](https://chatbot-portfolio-web.vercel.app)**
+
+Você pode **criar conta, fazer login (e-mail ou Google), subir documentos e navegar por toda a interface** na demo pública.
+
+A **geração de respostas do chat** roda através do [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) — uma camada única que expõe vários provedores (Google Gemini, Anthropic Claude) sob a mesma API, com troca de modelo em tempo real. Como esse gateway é um serviço **pago por uso**, a instância pública de demonstração roda **sem créditos carregados** — uma decisão deliberada para um projeto de portfólio: evita custo recorrente e o abuso de uma chave exposta num site público.
+
+Para ver o chat respondendo, rode localmente com suas próprias chaves (veja [Setup local](#setup-local)). A busca semântica nos documentos (RAG) usa o Gemini no **plano gratuito** e funciona out-of-the-box.
+
+> Resumindo: a arquitetura está completa e funcional — o que falta na demo pública é apenas saldo no gateway, não código.
 
 ---
 
@@ -22,7 +36,7 @@ Monorepo do portfólio com chatbot integrado. Construído com **Turborepo + pnpm
 ## Estrutura
 
 ```
-chatbot-portfolio/
+docchat/
 ├── apps/
 │   └── web/                # Next.js 15 (App Router) + React 19 + Tailwind v4
 ├── packages/
@@ -64,8 +78,8 @@ Os pacotes são consumidos via path aliases:
 ### 1. Clone e instale dependências
 
 ```bash
-git clone <repo-url>
-cd chatbot-portfolio
+git clone https://github.com/KauaEngineer/docchat.git
+cd docchat
 pnpm install
 ```
 
