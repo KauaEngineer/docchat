@@ -13,10 +13,12 @@ const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
 const EMBED_BATCH_SIZE = 100;
 
-// Embeddings ainda usam o provider direto da Google (não o gateway Vercel):
-// `text-embedding-004` é gratuito com cota generosa e o @ai-sdk/vercel@0.0.3
-// não expõe `textEmbeddingModel`. Caso queira migrar pro gateway no futuro,
-// é trocar este provider sem mexer no resto do fluxo.
+// Embeddings usam o provider direto da Google (não o gateway Vercel):
+// `gemini-embedding-001` é gratuito e substitui o `text-embedding-004`
+// (desligado pelo Google em 2026-01-14). Pedimos outputDimensionality 768
+// para manter compatibilidade com a coluna vector(768) e o índice HNSW já
+// existentes — o modelo gera 3072 dims por padrão. Caso queira migrar pro
+// gateway no futuro, é trocar este provider sem mexer no resto do fluxo.
 let cachedGoogle: ReturnType<typeof createGoogleGenerativeAI> | null = null;
 
 function getGoogleProvider(): ReturnType<typeof createGoogleGenerativeAI> {
@@ -101,7 +103,9 @@ export async function ingestDocument(documentId: string): Promise<void> {
     const batches = chunkArray(indexed, EMBED_BATCH_SIZE);
 
     const google = getGoogleProvider();
-    const embeddingModel = google.textEmbeddingModel('text-embedding-004');
+    const embeddingModel = google.textEmbeddingModel('gemini-embedding-001', {
+      outputDimensionality: 768,
+    });
 
     // Promise.all dispara os batches em paralelo. Se algum rejeitar, o catch
     // externo marca Document FAILED com a primeira mensagem de erro observada.

@@ -19,13 +19,15 @@ function getGoogleProvider(): ReturnType<typeof createGoogleGenerativeAI> {
 
 /**
  * Gera embedding de uma query (texto) usando o mesmo modelo da ingestão
- * (`text-embedding-004`, 768 dimensões). Idêntico mantém compatibilidade
- * com o índice HNSW dos chunks já persistidos.
+ * (`gemini-embedding-001`, 768 dimensões). Manter modelo e dimensão idênticos
+ * aos da ingestão é o que torna os vetores comparáveis na busca por similaridade.
  */
 export async function embedQuery(text: string): Promise<number[]> {
   const google = getGoogleProvider();
   const { embedding } = await embed({
-    model: google.textEmbeddingModel('text-embedding-004'),
+    model: google.textEmbeddingModel('gemini-embedding-001', {
+      outputDimensionality: 768,
+    }),
     value: text,
   });
   return embedding;
