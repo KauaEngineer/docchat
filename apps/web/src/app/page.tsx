@@ -1,8 +1,8 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import {
-  BotIcon,
   BoxesIcon,
   BrainCircuitIcon,
   GithubIcon,
@@ -150,27 +150,29 @@ function DemoStrip() {
           </p>
         </div>
 
-        {/* Placeholders das screenshots — preencher quando o produto estiver maduro. */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <DemoPlaceholder label="Conversa em streaming" />
-          <DemoPlaceholder label="Painel de artefatos" />
+          <DemoShot src="/screenshots/chat.png" label="Interface do chat" />
+          <DemoShot src="/screenshots/documentos.png" label="Documentos com RAG" />
         </div>
       </div>
     </section>
   );
 }
 
-function DemoPlaceholder({ label }: { label: string }) {
+function DemoShot({ src, label }: { src: string; label: string }) {
   return (
-    <div className="bg-muted/40 flex aspect-video items-center justify-center rounded-lg border border-dashed">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <BotIcon className="text-muted-foreground size-8" />
-        <span className="text-muted-foreground text-xs">{label}</span>
-        <span className="text-muted-foreground/70 text-[10px] uppercase tracking-wide">
-          Screenshot em breve
-        </span>
-      </div>
-    </div>
+    <figure className="bg-card overflow-hidden rounded-lg border">
+      <Image
+        src={src}
+        alt={label}
+        width={1920}
+        height={940}
+        className="h-auto w-full"
+      />
+      <figcaption className="text-muted-foreground border-t px-3 py-2 text-center text-xs">
+        {label}
+      </figcaption>
+    </figure>
   );
 }
 

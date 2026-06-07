@@ -22,7 +22,21 @@ DocChat é uma aplicação full-stack que replica as principais capacidades de u
 
 ## Screenshots
 
-🖼️ _Screenshots em breve._
+**Interface do chat**
+
+![Interface do chat do DocChat](apps/web/public/screenshots/chat.png)
+
+**Documentos com RAG** — upload de PDFs indexados por embeddings
+
+![Tela de documentos processados](apps/web/public/screenshots/documentos.png)
+
+**Upload de documentos**
+
+![Modal de upload de documento](apps/web/public/screenshots/upload.png)
+
+**Login**
+
+![Tela de login](apps/web/public/screenshots/login.png)
 
 ---
 
