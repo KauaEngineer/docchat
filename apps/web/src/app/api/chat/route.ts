@@ -25,6 +25,7 @@ import {
 } from '@repo/database';
 
 import { auth } from '@/lib/auth';
+import { needsGeneratedTitle } from '@/lib/conversation-title';
 
 // Prisma + better-auth precisam de runtime Node (não edge).
 export const runtime = 'nodejs';
@@ -313,16 +314,18 @@ export async function POST(req: Request): Promise<Response> {
             data: { updatedAt: new Date() },
           });
 
-          // Título: gera APENAS se ainda estiver vazio/null. Fresh read pra
-          // evitar race com requests concorrentes que já possam ter setado.
-          // Sem essa checagem, regenerate/edit triggariam regeração do título
-          // a cada turno (que é o que o spec proíbe).
+          // Título: gera APENAS enquanto ainda for o placeholder (ou vazio).
+          // Fresh read pra evitar race com requests concorrentes que já possam
+          // ter setado. Sem tratar o placeholder como "sem título", a condição
+          // nunca dispara — createConversation grava 'Nova conversa' e a conversa
+          // fica presa nesse título pra sempre. Já com um título real gerado,
+          // regenerate/edit não regeram (que é o que o spec proíbe).
           if (finishReason !== 'error') {
             const fresh = await prisma.conversation.findUnique({
               where: { id: conversationId },
               select: { title: true },
             });
-            if (!fresh?.title || fresh.title.trim() === '') {
+            if (needsGeneratedTitle(fresh?.title)) {
               await generateAndSaveTitle(conversationId, lastReqUser.content);
             }
           }

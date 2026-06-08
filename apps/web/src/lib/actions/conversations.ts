@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@repo/database';
 
 import { auth } from '@/lib/auth';
+import { PLACEHOLDER_TITLE } from '@/lib/conversation-title';
 import { DEFAULT_MODEL_ID, isValidModelId } from '@/lib/models';
 import type {
   ConversationSummary,
@@ -71,7 +72,7 @@ export async function createConversation(model: string): Promise<{ id: string }>
     );
   }
   const conversation = await prisma.conversation.create({
-    data: { userId, model: safeModel, title: 'Nova conversa' },
+    data: { userId, model: safeModel, title: PLACEHOLDER_TITLE },
     select: { id: true },
   });
   revalidateShell();
